@@ -13,6 +13,8 @@ params.MotionCorrFlag = 1;
 params.CorrectNoise = 1;
 
 % Automated prostate segmentation
+% If on the CMIG network, set the container to 'Singularity' (default)
+% If you have and want to use the Docker container, set the container to 'Docker' 
 params.ProstateSeg = 1;
 params.ProstateSegContainer = 'Singularity';
 
