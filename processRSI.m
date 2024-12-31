@@ -948,7 +948,7 @@ else
 end
 
 % Check dMRI forward and reverse => distortion correction accuracy (should also compute the predicted Jacobian, and adjust intensities?)
-if exist('DWI_avg_nc_rev', 'var') && flag_compute_avgs
+if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && flag_compute_avgs
   for fi = 1:size(tmp_vol_fwd,4)
     vol_fwd = tmp_vol_fwd(:,:,:,fi);
     vol_rev = tmp_vol_rev(:,:,:,fi);
