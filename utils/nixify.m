@@ -12,6 +12,10 @@ string = strrep(string, ']', '');
 string = strrep(string, '$', '');
 string = strrep(string, ',', '');
 
-nixy_string = string;
+% Convert string to basic ASCII 
+unicode_vals = double(string);
+unicode_vals(unicode_vals>127) = 63;
+
+nixy_string = char(unicode_vals);
 
 end
