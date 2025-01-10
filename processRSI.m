@@ -136,7 +136,9 @@ switch lower(Manufacturer)
     end
 
     % grab tensor.dat file
-    if isfield(dcminfo, 'Private_0019_10b6') == 1
+    if isfield(params, 'TensorFile')
+      tensorfile = params.TensorFile;
+    elseif isfield(dcminfo, 'Private_0019_10b6') == 1
       tensor_ID = dcminfo.Private_0019_10b6;
       tensorfile = sprintf('tensor%d.dat',tensor_ID);
       disp(['Tensorfile: ' tensorfile]);
@@ -507,7 +509,7 @@ if params.B0DISCO
 
    if any(isnan(ubvals_rev)) || (numel(ubvals_rev)<2)
      fprintf('%s -- %s.m:    Performing B0 distortion correction (using RPG)...\n', datestr(now), mfilename);   
-     disp_field = RPG_estimate_displacements(fname_b0_fwd, fname_b0_rev, params.B0optFlag, params.B0corrmin);
+     disp_field = RPG_estimate_displacements(fname_b0_fwd, fname_b0_rev, params.RPG);
      ctx_rsidat = mgh2ctx(rsidat, M);
      ctx_rsidat_B0uw = apply_displacement_field(ctx_rsidat, disp_field);
      QD_ctx_save_mgh( ctx_rsidat_B0uw, fullfile(output_path, 'DWI_vol_B0disCo_only.mgz') );
