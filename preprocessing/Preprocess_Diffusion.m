@@ -1,5 +1,14 @@
-function Preprocess_Diffusion(vol_B0uw, M, qmat, bvals, gwinfo, dcminfo, outdir, isFOCUS, isARTPro, MotionCorrFlag, EddyCorrFlag, pe_dim)
+function Preprocess_Diffusion(vol_B0uw, M, qmat, bvals, gwinfo, dcminfo, outdir, isFOCUS, isARTPro, pe_dim, params)
 
+if exist('params', 'var')
+  EddyCorrFlag = params.EddyCorrFlag;
+  GradWarpFlag = params.GradWarpFlag;
+  MotionCorrFlag = params.MotionCorrFlag;
+else
+  EddyCorrFlag = 1;
+  GradWarpFlag = 1;
+  MotionCorrFlag = 1;
+end
 
 % Eddy current correction
 if EddyCorrFlag
@@ -16,7 +25,7 @@ end
 
 
 % Gradient Unwarping
-if ~isempty(gwinfo) && isfield(gwinfo, 'gwtype')
+if GradWarpFlag && ~isempty(gwinfo) && isfield(gwinfo, 'gwtype')
   fprintf('%s -- %s.m:    Gradient Unwarping...\n',datestr(now),mfilename);
   vol_uw = zeros(size(vol_ecc));
 

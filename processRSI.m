@@ -483,10 +483,10 @@ if T2_flag ~= 0
 
   % Unwarp T2
   fprintf('%s -- %s.m:    Unwarping T2...\n',datestr(now),mfilename);
-  if isfield(gwarpInfoT2, 'gwtype') && isfield(gwarpInfoT2, 'unwarpflag') && isfield(gwarpInfoT2, 'isoctrflag')
+  if params.GradWarpFlag && isfield(gwarpInfoT2, 'gwtype') && isfield(gwarpInfoT2, 'unwarpflag') && isfield(gwarpInfoT2, 'isoctrflag')
     volT2 = ctx_unwarp_grad(volT2, gwarpInfoT2.gwtype, gwarpInfoT2.unwarpflag, gwarpInfoT2.isoctrflag);
   else
-    fprintf('WARNING: Unable to find necessary info for T2 gradient unwarping\n');
+    fprintf('WARNING: T2 gradwarp correction disabled\n');
   end
 
   fprintf('%s -- %s.m:    Saving T2 data...\n',datestr(now),mfilename);
@@ -559,7 +559,7 @@ end
 % Other corrections: Eddy current, gradient warping, motion
 if exist('ubvals_rev', 'var') && (numel(ubvals_rev)>=2)
    fprintf('%s -- %s.m:    Performing other corrections on reverse PE polarity volumes...\n', datestr(now), mfilename);
-   Preprocess_Diffusion(rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev, output_path, isFOCUS, isARTPro, params.MotionCorrFlag, params.EddyCorrFlag, pedim);
+   Preprocess_Diffusion(rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev, output_path, isFOCUS, isARTPro, pedim, params);
    fname_corr_rev = sprintf('%s/DWI_vol_preprocessed.mgz', output_path);
    [rsidat_rev, M_rev] = QD_load_mgh(fname_corr_rev);
    qmat_rev = load(sprintf('%s/qmat_corrected.mat',output_path)); qmat_rev = qmat_rev.qmat_mc;
@@ -572,7 +572,7 @@ if exist('ubvals_rev', 'var') && (numel(ubvals_rev)>=2)
 end
 
 fprintf('%s -- %s.m:    Performing other corrections...\n', datestr(now), mfilename);
-Preprocess_Diffusion(rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo, output_path, isFOCUS, isARTPro, params.MotionCorrFlag, params.EddyCorrFlag, pedim);
+Preprocess_Diffusion(rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo, output_path, isFOCUS, isARTPro, pedim, params);
 fname_corr = sprintf('%s/DWI_vol_preprocessed.mgz', output_path);
 [rsidat, M] = QD_load_mgh(fname_corr);
 qmat = load(sprintf('%s/qmat_corrected.mat',output_path)); qmat = qmat.qmat_mc;

@@ -15,6 +15,7 @@ params.B0DISCO = 1;
   params.RPG.B0corrmin = 0.95;
 
 % Other corrections
+params.GradWarpFlag = 1;
 params.EddyCorrFlag = 1;
 params.MotionCorrFlag = 1;
 params.CorrectNoise = 1;
