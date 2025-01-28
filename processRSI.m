@@ -1041,10 +1041,9 @@ if exist('ctx_dce', 'var') && params.SelectDICOMS.DCE
    dce_dcm_dir = fullfile(dcm_write_dir, dce_dcm_label);
    dce_dcm_seriesnum = 333;
 
-   % Subtraction images
-   ctx_dce.imgs = ctx_dce.imgs - ctx_dce.imgs(:,:,:,1);
-   ctx_dce.imgs = ctx_dce.imgs(:,:,:,2:end);
-   ctx_dce.imgs(ctx_dce.imgs<0) = 0;
+   vol_enhance = mean(ctx_dce.imgs(:,:,:,2:10), 4) - ctx_dce.imgs(:,:,:,1);
+   vol_enhance(vol_enhance<0) = 0;
+   ctx_dce.imgs = vol_enhance;
 
    if exist('volT2', 'var')
      vol_dce_t2 = zeros(rows_T2, cols_T2, slices_T2, size(ctx_dce.imgs,4));
@@ -1274,34 +1273,31 @@ if exist('vol_lesions', 'var')
     end
 
     lesion_series_num = 809;
+    seg_fields.metadata.series_number = lesion_series_num;
+    seg_fields.metadata.instance_number = 1;
+    seg_fields.metadata.manufacturer = 'CMIG';
+    seg_fields.metadata.manufacturer_model_name = 'CMIG RSI AI';
+    seg_fields.metadata.software_versions = 'v69';
+    seg_fields.metadata.device_serial_number = '69';
+
+    seg_fields.source_images = path_ref;
+    
+    seg_fields.algorithm.name = 'GMIG RSI AI';
+    seg_fields.algorithm.version = 'v69';
+    seg_fields.algorithm.family = 'ArtificialIntelligence';
+
+    seg_fields.data = volT2;
+    seg_fields.data.imgs = [];
     for i = 1:length(vol_lesions)
-	
       ctx_lesion = mgh2ctx(vol_lesions{i}, M);
       ctx_lesion_t2 = vol_resample(ctx_lesion, volT2, eye(4));
-      
-      seg_fields.data = ctx_lesion_t2;
-      seg_fields.source_images = path_ref;
-
-      seg_fields.algorithm.name = 'GMIG RSI AI';
-      seg_fields.algorithm.version = 'v69';
-      seg_fields.algorithm.family = 'ArtificialIntelligence';
-
-      seg_fields.description.label = ['Lesion_' num2str(i)];
-      seg_fields.description.type = 'Abnormal';
-      seg_fields.description.tracking_id = 'RSI-bright lesion';
-
-      seg_fields.metadata.series_number = lesion_series_num;
-      seg_fields.metadata.instance_number = 1;
-      seg_fields.metadata.manufacturer = 'CMIG';
-      seg_fields.metadata.manufacturer_model_name = 'CMIG RSI AI';
-      seg_fields.metadata.software_versions = 'v69';
-      seg_fields.metadata.device_serial_number = '69';
-
-      write_dicom_seg(seg_fields, fullfile(dcm_write_dir, 'Lesion_Mask_SEG_DWI'), params.PythonVEnv);
-
-      lesion_series_num = lesion_series_num + 1;
-
+      seg_fields.data.imgs = cat(4, seg_fields.data.imgs, ctx_lesion_t2.imgs);
+      seg_fields.description(i).type = 'Abnormal';
+      seg_fields.description(i).tracking_id = 'RSI-bright lesion';
+      seg_fields.description(i).label = ['Lesion_' num2str(i)];
     end
+
+    write_dicom_seg(seg_fields, fullfile(dcm_write_dir, 'Lesion_Mask_SEG_DWI'), params.PythonVEnv);
     
   end
 end
