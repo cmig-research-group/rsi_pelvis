@@ -38,7 +38,7 @@ for v = 1:length(pat_dir)
 
     if (length(paths.RSI)==1) && isempty(paths.RSI{1})
       disp(['No RSI data found in ' exam_dir]);
-      return
+      continue
     end
 
     exam_output_dir = fullfile(output_dir, patient_name, pat_dir(v).name);
