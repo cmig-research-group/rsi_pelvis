@@ -1221,6 +1221,7 @@ if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
    seg_fields.description.type = 'Organ';
    seg_fields.description.tracking_id = 'Cortechs Prostate Autoseg';
 
+   seg_fields.metadata.series_description = 'SEG_prostate';
    seg_fields.metadata.series_number = 808;
    seg_fields.metadata.instance_number = 1;
    seg_fields.metadata.manufacturer = 'Cortechs.AI';
@@ -1273,6 +1274,7 @@ if exist('vol_lesions', 'var')
     end
 
     lesion_series_num = 809;
+    seg_fields.metadata.series_description = 'SEG_lesions';
     seg_fields.metadata.series_number = lesion_series_num;
     seg_fields.metadata.instance_number = 1;
     seg_fields.metadata.manufacturer = 'CMIG';
