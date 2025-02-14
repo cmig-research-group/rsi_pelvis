@@ -73,9 +73,14 @@ for i = 1:length(acqs)
     acq_path = fullfile(exam_dir, acqs(i).name);
 
     ims = dir(acq_path);
-    im = ims(3).name;
-    info = dicominfo(fullfile(acq_path, im));
-    info = fix_impax_dcm_tags(info);
+    try
+      im = ims(3).name;
+      info = dicominfo(fullfile(acq_path, im));
+      info = fix_impax_dcm_tags(info);
+    catch ME
+      fprintf('%s\n', ME.message)
+      continue
+    end
 
     if ~isfield(info, 'ImageType')
        continue
