@@ -16,7 +16,7 @@ container = lower(container);
 if ~isdeployed
   disp('Running segmentation locally');
   if strcmp(container, 'docker')
-    cmd = ['sudo docker run -i --rm -u 0:0 -v ' fullfile(filepath, 'seg') ':/input:ro -v ' fullfile(filepath, 'seg') ':/output 696021503801.dkr.ecr.us-east-1.amazonaws.com/prostate-segmentation:dev'];
+    cmd = ['docker run -i --rm -u 0:0 -v ' fullfile(filepath, 'seg') ':/input:ro -v ' fullfile(filepath, 'seg') ':/output 696021503801.dkr.ecr.us-east-1.amazonaws.com/prostate-segmentation:dev'];
   else
     mkdir(fullfile(filepath, 'seg_out'));
     cmd = ['singularity run -B ' fullfile(filepath, 'seg') ':/app/input -B ' fullfile(filepath, 'seg_out') ':/app/output /space/bil-syn01/1/cmig_bil/Cortechs/prostate_seg.sif'];
