@@ -134,7 +134,8 @@ for i = 1:length(acqs)
     match_T2_plane = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_T2_ax_plane)));
     match_T2_contrast = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_T2_ax_contrast)));
     match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_T2_ax)));
-    if match_T2_plane && match_T2_contrast && ~match_exclude
+    match_exclude_reformat = ~isempty(regexpi(im_type, 'REFORMAT'));
+    if match_T2_plane && match_T2_contrast && ~match_exclude && ~match_exclude_reformat
       paths.T2_ax{T2_ax_path_num} = acq_path;
       T2_ax_path_num = T2_ax_path_num + 1;
     end
