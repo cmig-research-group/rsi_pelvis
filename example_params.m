@@ -42,9 +42,9 @@ params.UrethraSegContainer = 'Docker';
 params.WriteDICOMS = 1;
   params.SelectDICOMS.T2 = 1;
   params.SelectDICOMS.DCE = 1;
-  params.SelectDICOMS.DWI = 1;
+  params.SelectDICOMS.DWI = 0;
   params.SelectDICOMS.ADC = 1;
-  params.SelectDICOMS.RSICmaps = 1;
+  params.SelectDICOMS.RSICmaps = 0;
   params.SelectDICOMS.RSIrs = 1;
   params.SelectDICOMS.RSIrsReportOverlay = 1;
   params.SelectDICOMS.ProstateAutoSeg_RT = 1;
@@ -54,7 +54,7 @@ params.WriteDICOMS = 1;
   params.SelectDICOMS.LesionAutoSeg_SEG = 1;
 
 % Python vitrual environment (only necessary to generate DICOM SEG contours)
-params.PythonVEnv = '/home/ccconlin/Working/pirads_app/venv_pirads';
+params.PythonVEnv = '/home/bpayne/cmig_utils/dicom/seg_dicom/venv';
 
 % QC
 params.DebugFlag = 0;
@@ -62,4 +62,4 @@ params.CheckProtocolCompliance = 1;
 params.ProtocolReference = 'artpro_protocol_reference.mat';
 
 % Save non-RSI series as mgz files 
-params.WriteOptionalSeries = 1;
+params.WriteOptionalSeries = 0;

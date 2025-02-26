@@ -26,7 +26,7 @@ if ~isdeployed
   system(cmd);
 
 else
-  cmd = ['sudo ./call_docker.sh ', fullfile(filepath, 'seg')];
+  cmd = ['./call_docker.sh ', fullfile(filepath, 'seg')];
   disp(['Command: ', cmd]);
   system(cmd);
 
