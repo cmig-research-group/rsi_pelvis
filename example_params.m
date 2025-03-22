@@ -54,7 +54,7 @@ params.WriteDICOMS = 1;
   params.SelectDICOMS.LesionAutoSeg_SEG = 1;
 
 % Python vitrual environment (only necessary to generate DICOM SEG contours)
-params.PythonVEnv = '/home/bpayne/cmig_utils/dicom/seg_dicom/venv';
+params.PythonVEnv = '/usr';
 
 % QC
 params.DebugFlag = 0;
