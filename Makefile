@@ -12,7 +12,6 @@ MATFLAGS = -I ../cmig_utils/B0_distortion -I ../cmig_utils/ctxmgh -I ../cmig_uti
 
 ALL_PROGS = \
 	RSI_pipeline_multisort/RSI_pipeline_multisort \
-	test_processRSI/test_processRSI \
 	contour_prostate/contour_prostate
 
 all: $(ALL_PROGS)
