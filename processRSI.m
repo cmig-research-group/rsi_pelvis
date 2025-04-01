@@ -1,16 +1,14 @@
 function status = processRSI(RSI_path, RSI_path_rev, T2_path, DCE_path, output_path, params)
-
-% Function for processing RSI datasets 
+% processRSI - Process RSI data set
 %
-%  INPUTS:
-%      RSI_path (input1) -- Path to RSI data
-%      T2_path (input2) -- Path to T2 data
-%                          Optional - Pass empty string if no T2
-%      output_path -- Path to output_path (processed) data
-%      params -- Structure of input parameters
-%      RSI_path_rev -- Path for non-integrated GE data (e.g. whole-body data)
-%
-%  Modified from the original application written by Nathan White
+% Input Arguments
+%   RSI_path: Path to directory containing DICOM files for a single RSI series
+%   RSI_path_rev (optional): Path to directory containing DICOM files for a single RSI series with phase-encoding direction opposite to that of RSI_path
+%   T2_path (optional): Path to directory containing DICOM files for a reference anatomical T2w volume
+%   DCE_path (optional): Path to directory (or directories) containing DICOM files for the raw (unsubtracted) images from a single DCE acquisition
+%                        Type: Cell array containing one or more character vectors; {'', '', ''} 
+%   output_path: Path to directory where results will be saved
+%   params: Structure of input parameters
 
 
 %% ============== Parse Inputs ============== %%
@@ -582,22 +580,31 @@ volb0.imgs(find(isnan(volb0.imgs))) = 0;
 volb0.imgs(find(isinf(volb0.imgs))) = 0;
 
 
-% Segment prostate from T2 volume using CorTechs' software -----------------
+% Segment prostate from T2 volume -----------------------------------------
 if params.ProstateSeg == 1 && T2_flag ~= 0
 
-   fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CorTechs'' software...\n',datestr(now),mfilename);
-   contour = contour_prostate( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+  if strcmpi(params.ProstateSegVendor, 'cmig')
+    fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
+    contour = contour_prostate_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
 
-   if isempty(contour)
-      params.ProstateSeg = 0;
-   else
-     cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'prostate_contour_T2_space.mgz')];
-     system(cmd);
-     fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
-     target = QD_ctx_load_mgh(fname_corr);
-     contour_dwi_space = vol_resample(contour, target, eye(4));
-     QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
-   end
+  elseif strcmpi(params.ProstateSegVendor, 'cortechs')
+    fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CorTechs'' software...\n',datestr(now),mfilename);
+    contour = contour_prostate_cortechs( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+
+  else
+    error('Prostate segmentation was enabled, but ProstateSegVendor parameter was not recognized');
+  end
+
+  if isempty(contour)
+    params.ProstateSeg = 0;
+  else
+    cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'prostate_contour_T2_space.mgz')];
+    system(cmd);
+    fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
+    target = QD_ctx_load_mgh(fname_corr);
+    contour_dwi_space = vol_resample(contour, target, eye(4));
+    QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+  end
 
 end
 

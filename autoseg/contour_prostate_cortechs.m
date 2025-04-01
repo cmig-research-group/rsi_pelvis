@@ -1,4 +1,4 @@
-function prostate_mask = contour_prostate(path_to_axT2_mgz, container)
+function prostate_mask = contour_prostate_cortechs(path_to_axT2_mgz, container)
 
 [filepath, name, ~] = fileparts(path_to_axT2_mgz);
 name_seg = [name '_seg.mgz'];

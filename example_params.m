@@ -1,5 +1,6 @@
 % Example configuration file for processing a prostate RSI exam
 % The path to this file (or similar) should be the 3rd argument to RSI_pipeline_multisort or RSI_pipeline
+% Text-string parameters are case insensitive (e.g., Docker = docker)  
 
 % RSI model parameters
 params.ModelADCs = [1.0528e-04 0.0018 0.0036 0.1220];
@@ -21,9 +22,12 @@ params.MotionCorrFlag = 1;
 params.CorrectNoise = 1;
 
 % Automated prostate segmentation
-% If on the CMIG network, set the container to 'Singularity' (default)
-% If you have and want to use the Docker container, set the container to 'Docker' 
+  % Supports deep-learning AI segmentation models from two vendors: CMIG (default) and Cortechs.ai
+  % Both models can be run using Docker, Podman (with alias docker=podman), or Singularity (default for CMIG users)
+    % If on the CMIG network, set the container to 'Singularity'
+    % If you have and want to use the Docker/Podman container, set the container to 'Docker' 
 params.ProstateSeg = 1;
+params.ProstateSegVendor = 'CMIG'; % Use 'Cortechs' for the model from Cortechs.ai (if you have the Docker image)
 params.ProstateSegContainer = 'Singularity';
 
 % DICOM outputs
