@@ -1,9 +1,5 @@
 function RSI_pipeline(input_dir, output_dir, params)
 
-if strcmp(input_dir(end), '/')
-   input_dir = input_dir(1:end-1);
-end
-
 if ~exist(input_dir, 'dir')
    fprintf('Input directory does not exist: %s\n', input_dir);
    return
@@ -17,14 +13,29 @@ switch class(params)
       load(params);
     else
       params = eval_file(params);
+      fprintf('\n\n');
     end
   otherwise
     error('Unable to parse parameter file');
 end
 
+if strcmp(input_dir(end), '/')
+   input_dir = input_dir(1:end-1);
+end
+
 indx = regexp(input_dir, '\/');
-patient_name = input_dir(indx(end)+1:end);
-pat_dir = dir(input_dir);
+bottom_dir = input_dir(indx(end)+1:end);
+match_date = ~isempty(regexp(bottom_dir, '\d{8}$'));
+match_date2 = ~isempty(regexp(bottom_dir, '\d{8}_Study*'));
+
+if match_date || match_date2
+  patient_name = input_dir(indx(end-1)+1:indx(end)-1);
+  pat_dir.name = bottom_dir;
+  pat_dir.folder = input_dir(indx(1):indx(end)-1);
+else
+  patient_name = input_dir(indx(end)+1:end);
+  pat_dir = dir(input_dir);
+end
 
 exclude = {'.', '..', '.DS_Store'};
 
