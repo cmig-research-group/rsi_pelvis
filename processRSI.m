@@ -554,7 +554,7 @@ if params.B0DISCO
 end
 
 
-% Other corrections: Eddy current, gradient warping, motion
+% Other corrections: Eddy current, gradient warping, motion ---------------------------------------------
 if exist('ubvals_rev', 'var') && (numel(ubvals_rev)>=2)
    fprintf('%s -- %s.m:    Performing other corrections on reverse PE polarity volumes...\n', datestr(now), mfilename);
    Preprocess_Diffusion(rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev, output_path, isFOCUS, isARTPro, pedim, params);
@@ -581,7 +581,26 @@ volb0.imgs(find(isinf(volb0.imgs))) = 0;
 
 
 % Segment prostate from T2 volume -----------------------------------------
-if params.ProstateSeg == 1 && T2_flag ~= 0
+if (params.ProstateSeg == 1) && (T2_flag ~= 0)
+
+  % Check if prostate has already been contoured for another RSI series
+  contour_exists = 0;
+  path_date = fullfile(output_path, '../');
+  cmd = sprintf('find %s -name "prostate_contour_DWI_space.mgz"', path_date);
+  [~, cmdout] = system(cmd);
+  if ~isempty(cmdout)
+     fprintf('%s -- %s.m:    Copying prostate contour from another RSI series...\n',datestr(now),mfilename);
+     cmdout = split(cmdout);
+     match_contour = find(~cellfun(@isempty, cmdout));
+     path_contour = cmdout{match_contour};
+     copyfile(path_contour, output_path);
+     contour_exists = 1;
+  end
+
+end
+
+
+if (params.ProstateSeg == 1) && (T2_flag ~= 0) && (contour_exists == 0)
 
   if strcmpi(params.ProstateSegVendor, 'cmig')
     fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
