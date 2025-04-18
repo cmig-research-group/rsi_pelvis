@@ -6,7 +6,7 @@ t = num2str(t);
 t = strrep(t, '.', '');
 
 fname_sh = fullfile(sorted_dir, sprintf('mv_cmds_%s.sh',t) );
-generate_cmds(data_dir, sorted_dir, fname_sh);
+generate_cmds(data_dir, sorted_dir, fname_sh, {});
 
 disp('Moving all those files...');
 cmd1 = ['chmod 777 ' fname_sh];
@@ -23,8 +23,9 @@ end
 end
 
 
-function generate_cmds(data_dir, sorted_dir, fname_sh)
+function study_uids = generate_cmds(data_dir, sorted_dir, fname_sh, study_uids)
 
+exclude = {'.', '..', '.DS_Store'};
 contents = dir(data_dir);
 
 if ~exist(sorted_dir, 'dir')
@@ -35,17 +36,25 @@ fID = fopen(fname_sh, 'a');
 
 disp(['Sorting ' data_dir]);
 for i = 1:length(contents)
-  if strcmp(contents(i).name,'.') == 0 && strcmp(contents(i).name,'..') == 0
+  if ~any(strcmp(contents(i).name, exclude))
 
     item = fullfile(contents(i).folder, contents(i).name);
 
     if exist(item, 'dir')
-      generate_cmds(item, sorted_dir, fname_sh);
+      study_uids = generate_cmds(item, sorted_dir, fname_sh, study_uids);
     end
 
     try
       info = dicominfo(item);
       study_date = info.StudyDate;
+
+      study_uid = info.StudyInstanceUID;
+      study_num = find(strcmp(study_uid, study_uids));
+      if isempty(study_num)
+	 study_uids{end+1} = study_uid;
+	 study_num = length(study_uids);
+      end
+
       subject_name = info.PatientName.FamilyName;
       subject_name = nixify(subject_name);
       subject_ID = info.PatientID;
@@ -75,7 +84,13 @@ for i = 1:length(contents)
 	mkdir(subject_dir);
       end
 
-      visit_dir = fullfile(subject_dir, study_date);
+      % Consider multiple scans on a single date
+      if study_num == 1
+	visit_dir = fullfile(subject_dir, study_date);
+      elseif study_num > 1
+	study_date_and_num = sprintf('%s_Study%s', study_date, num2str(study_num));
+	visit_dir = fullfile(subject_dir, study_date_and_num);
+      end
       if ~exist(visit_dir, 'dir')
         mkdir(visit_dir);
       end
