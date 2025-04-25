@@ -102,7 +102,7 @@ end
 isARTPro = 0;
 switch lower(Manufacturer)
        
-  case 'ge medical systems'
+  case 'ge medical systems' % GE --------------------------------------------------------------------
 
     % Check if data is FOCUS or not
     isFOCUS = 0;
@@ -225,7 +225,7 @@ switch lower(Manufacturer)
     end
     
 
-  case {'siemens', 'siemens healthineers'}
+  case {'siemens', 'siemens healthineers'}  % Siemens --------------------------------------------------------------------
 
     isFOCUS = 0;
     if ~isempty(regexpi(dcminfo.SeriesDescription, 'ZOOMit'))
@@ -247,6 +247,23 @@ switch lower(Manufacturer)
 	qmat_rev = qmat_rev.*repmat(colvec(deratefac), [1 3]);
       end
       [gwinfo_rsi_rev, ~] = mmil_get_gradwarpinfo(dcminfo_rev);
+    end
+
+
+  case 'philips healthcare'  % Philips --------------------------------------------------------------------
+
+    [rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo] = ReadDicomDiffusionData(RSI_path);
+    if bvals(end)>0 && all(qmat(end,:)==[0 0 0]) % Remove synthesized image if it exists
+      qmat = qmat(1:end-1,:);
+      bvals = bvals(1:end-1);
+    end
+
+    if ~isempty(RSI_path_rev)
+      [rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev] = ReadDicomDiffusionData(RSI_path_rev);
+      if bvals_rev(end)>0 && all(qmat_rev(end,:)==[0 0 0]) % Remove synthesized image if it exists
+	qmat_rev = qmat_rev(1:end-1,:);
+	bvals_rev = bvals_rev(1:end-1);
+      end
     end
 
 
@@ -586,43 +603,46 @@ if (params.ProstateSeg == 1) && (T2_flag ~= 0)
   % Check if prostate has already been contoured for another RSI series
   contour_exists = 0;
   path_date = fullfile(output_path, '../');
-  cmd = sprintf('find %s -name "prostate_contour_DWI_space.mgz"', path_date);
+  cmd = sprintf('find %s -name "prostate_contour_T2_space.mgz"', path_date);
   [~, cmdout] = system(cmd);
   if ~isempty(cmdout)
-     fprintf('%s -- %s.m:    Copying prostate contour from another RSI series...\n',datestr(now),mfilename);
-     cmdout = split(cmdout);
-     match_contour = find(~cellfun(@isempty, cmdout));
-     path_contour = cmdout{match_contour};
-     copyfile(path_contour, output_path);
-     contour_exists = 1;
-  end
-
-end
-
-
-if (params.ProstateSeg == 1) && (T2_flag ~= 0) && (contour_exists == 0)
-
-  if strcmpi(params.ProstateSegVendor, 'cmig')
-    fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
-    contour = contour_prostate_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
-
-  elseif strcmpi(params.ProstateSegVendor, 'cortechs')
-    fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CorTechs'' software...\n',datestr(now),mfilename);
-    contour = contour_prostate_cortechs( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
-
-  else
-    error('Prostate segmentation was enabled, but ProstateSegVendor parameter was not recognized');
-  end
-
-  if isempty(contour)
-    params.ProstateSeg = 0;
-  else
-    cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'prostate_contour_T2_space.mgz')];
-    system(cmd);
-    fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
+    fprintf('%s -- %s.m:    Copying prostate contour from another RSI series...\n',datestr(now),mfilename);
+    cmdout = split(cmdout);
+    match_contour = find(~cellfun(@isempty, cmdout));
+    path_contour = cmdout{match_contour};
+    copyfile(path_contour, output_path);
+    contour = QD_ctx_load_mgh(fullfile(output_path, 'prostate_contour_T2_space.mgz'));
     target = QD_ctx_load_mgh(fname_corr);
     contour_dwi_space = vol_resample(contour, target, eye(4));
     QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+    contour_exists = 1;
+  end
+
+  if contour_exists == 0
+
+    if strcmpi(params.ProstateSegVendor, 'cmig')
+      fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
+      contour = contour_prostate_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+
+    elseif strcmpi(params.ProstateSegVendor, 'cortechs')
+      fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CorTechs'' software...\n',datestr(now),mfilename);
+      contour = contour_prostate_cortechs( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+
+    else
+      error('Prostate segmentation was enabled, but ProstateSegVendor parameter was not recognized');
+    end
+
+    if isempty(contour)
+      params.ProstateSeg = 0;
+    else
+      cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'prostate_contour_T2_space.mgz')];
+      system(cmd);
+      fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
+      target = QD_ctx_load_mgh(fname_corr);
+      contour_dwi_space = vol_resample(contour, target, eye(4));
+      QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+    end
+
   end
 
 end
@@ -1005,38 +1025,60 @@ save(fullfile(output_path,'QC_metrics.mat'),'corrvec_fit_fwd','corrvec_fit_rev',
 
 %% ========================== Load DCE Data ========================== %%
 if ~isempty(DCE_path{1})
-  fprintf('%s -- %s.m:    Loading DCE data...\n', datestr(now), mfilename);
 
-  try
-    path_parts = regexp(DCE_path{1}, filesep, 'split');
-    acq_name = path_parts{end};
-    acq_name = nixify(acq_name);
-    fname_out_opt = fullfile(output_path, 'DCE.mgz');
-    fname_out_t = fullfile(output_path, 't.mat');
+  % Check if DCE data has already been loaded for another RSI series
+  dce_exists = 0;
+  path_date = fullfile(output_path, '../');
+  cmd = sprintf('find %s -name "DCE.mgz"', path_date);
+  [~, cmdout] = system(cmd);
+  if ~isempty(cmdout)
+    fprintf('%s -- %s.m:    Copying DCE data from another RSI series...\n',datestr(now),mfilename);
+    cmdout = split(cmdout);
+    match_dce = find(~cellfun(@isempty, cmdout));
+    path_dce = cmdout{match_dce};
+    copyfile(path_dce, output_path);
+    [fpath_dce, ~, ~] = fileparts(path_dce);
+    copyfile(fullfile(fpath_dce, 't.mat'), output_path);
+    ctx_dce = QD_ctx_load_mgh(fullfile(output_path, 'DCE.mgz'));
+    t = load(fullfile(output_path, 't.mat'));
+    t = t.t;
+    dce_exists = 1;
+  end
 
-    if length(DCE_path) > 1
-      path_tmp_in = fullfile(output_path, 'tmp_dce');
-      mkdir(path_tmp_in);
-      fprintf('%s -- %s.m:    Consolidating DCE files...\n', datestr(now), mfilename);
-      for i = 1:length(DCE_path)
-	cmd = sprintf('cp --backup=t ''%s''/* ''%s''/', DCE_path{i}, path_tmp_in);
-	system(cmd);
+  if dce_exists == 0
+    fprintf('%s -- %s.m:    Loading DCE data...\n', datestr(now), mfilename);
+    try
+      path_parts = regexp(DCE_path{1}, filesep, 'split');
+      acq_name = path_parts{end};
+      acq_name = nixify(acq_name);
+      fname_out_opt = fullfile(output_path, 'DCE.mgz');
+      fname_out_t = fullfile(output_path, 't.mat');
+
+      if length(DCE_path) > 1
+	path_tmp_in = fullfile(output_path, 'tmp_dce');
+	mkdir(path_tmp_in);
+	fprintf('%s -- %s.m:    Consolidating DCE files...\n', datestr(now), mfilename);
+	for i = 1:length(DCE_path)
+	  cmd = sprintf('cp --backup=t ''%s''/* ''%s''/', DCE_path{i}, path_tmp_in);
+	  system(cmd);
+	end
+	DCE_path_consolidated = path_tmp_in;
+      else
+	DCE_path_consolidated = DCE_path{1};
       end
-      DCE_path_consolidated = path_tmp_in;
-    else
-      DCE_path_consolidated = DCE_path{1};
+
+      [ctx_dce, t] = load_dce_data(DCE_path_consolidated);
+      QD_ctx_save_mgh(ctx_dce, fname_out_opt);
+      save(fname_out_t, 't');
+
+      if exist('path_tmp_in', 'var')
+	rmdir(path_tmp_in, 's');
+      end
+
+    catch ME
+      fprintf('%s\n', ME.message);
     end
 
-    [ctx_dce, t] = load_dce_data(DCE_path_consolidated);
-    QD_ctx_save_mgh(ctx_dce, fname_out_opt);
-    save(fname_out_t, 't');
-
-    if exist('path_tmp_in', 'var')
-      rmdir(path_tmp_in, 's');
-    end
-
-  catch ME
-    fprintf('%s\n', ME.message);
   end
 
 end
