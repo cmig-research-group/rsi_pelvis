@@ -10,6 +10,7 @@ else
   MotionCorrFlag = 1;
 end
 
+
 % Eddy current correction
 if EddyCorrFlag
     fprintf('%s -- %s.m:    Running Eddy Current Correction...\n',datestr(now),mfilename);

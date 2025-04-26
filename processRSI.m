@@ -250,19 +250,31 @@ switch lower(Manufacturer)
     end
 
 
-  case 'philips healthcare'  % Philips --------------------------------------------------------------------
+  case {'philips', 'philips healthcare'}  % Philips --------------------------------------------------------------------
 
-    [rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo] = ReadDicomDiffusionData(RSI_path);
+    isFOCUS = 0;
+    if ~isempty(regexpi(dcminfo.SeriesDescription, 'ZOOM'))
+      isFOCUS = 1;
+    end
+
+    integrated_rev_flag = 0;
+    integrated_rev_flag_rev = 0;
+
+    [rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo] = ReadDicomDiffusionDataPhilips(RSI_path);
     if bvals(end)>0 && all(qmat(end,:)==[0 0 0]) % Remove synthesized image if it exists
+      fprintf('Chopping off synthesized volume\n');
       qmat = qmat(1:end-1,:);
       bvals = bvals(1:end-1);
+      rsidat = rsidat(:,:,:,1:end-1);
     end
 
     if ~isempty(RSI_path_rev)
-      [rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev] = ReadDicomDiffusionData(RSI_path_rev);
+      [rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev] = ReadDicomDiffusionDataPhilips(RSI_path_rev);
       if bvals_rev(end)>0 && all(qmat_rev(end,:)==[0 0 0]) % Remove synthesized image if it exists
+	fprintf('Chopping off synthesized volume\n');
 	qmat_rev = qmat_rev(1:end-1,:);
 	bvals_rev = bvals_rev(1:end-1);
+	rsidat_rev = rsidat_rev(:,:,:,1:end-1);
       end
     end
 
@@ -336,21 +348,19 @@ if strcmpi(Manufacturer,'ge medical systems')
 
   end
 
-end
+else
 
-if any( strcmp(lower(Manufacturer), {'siemens', 'siemens healthineers'}) )
+  b0inds = find(bvals == 0);
+  b0_vol_fwd = mgh2ctx( mean(rsidat(:,:,:,b0inds),4), M );
 
-   b0inds = find(bvals == 0);
-   b0_vol_fwd = mgh2ctx( mean(rsidat(:,:,:,b0inds),4), M );
-
-   if exist('rsidat_rev', 'var')
-     b0inds_rev = find(bvals_rev == 0);
-     b0_vol_rev = mgh2ctx( mean(rsidat_rev(:,:,:,b0inds_rev),4), M_rev );
-   else
-     fprintf('%s -- %s.m:    Only one b=0 volume found, so no B0 distortion correction...\n', datestr(now), mfilename);
-     b0_vol_rev = [];
-     params.B0DISCO = 0;
-   end
+  if exist('rsidat_rev', 'var')
+    b0inds_rev = find(bvals_rev == 0);
+    b0_vol_rev = mgh2ctx( mean(rsidat_rev(:,:,:,b0inds_rev),4), M_rev );
+  else
+    fprintf('%s -- %s.m:    Only one b=0 volume found, so no B0 distortion correction...\n', datestr(now), mfilename);
+    b0_vol_rev = [];
+    params.B0DISCO = 0;
+  end
 
 end
 
@@ -1094,10 +1104,12 @@ mkdir(dcm_write_dir);
 % T2
 if T2_flag ~= 0 && params.SelectDICOMS.T2
   fprintf('%s -- %s.m:    Writing T2 DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
-  T2_ref_dcm_dir = T2_path;
   T2_dcm_label = 'RSI_anatomic_T2W';
-  T2_dcm_seriesnum = 6969;
-  OAR_write_dicom( volT2, T2_ref_dcm_dir, fullfile(dcm_write_dir, T2_dcm_label), T2_dcm_label, T2_dcm_seriesnum, 'MR');
+  dcm_hdr_struct = dcminfo_T2;
+  dcm_hdr_struct.SeriesDescription = T2_dcm_label;
+  dcm_hdr_struct.SeriesNumber = 6969;
+  outpath_T2 = fullfile(dcm_write_dir, T2_dcm_label);
+  dicomwrite_cmig(volT2, outpath_T2, dcm_hdr_struct)
 end
 
 
@@ -1105,8 +1117,8 @@ end
 if exist('ctx_dce', 'var') && params.SelectDICOMS.DCE
    fprintf('%s -- %s.m:    Writing DCE DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
 
-   dce_dcm_label = 'DCE';
-   dce_dcm_dir = fullfile(dcm_write_dir, dce_dcm_label);
+   dce_dcm_label = 'DCE_subtraction';
+   outpath_dcm = fullfile(dcm_write_dir, dce_dcm_label);
    dce_dcm_seriesnum = 333;
 
    vol_enhance = mean(ctx_dce.imgs(:,:,:,2:10), 4) - ctx_dce.imgs(:,:,:,1);
@@ -1123,9 +1135,17 @@ if exist('ctx_dce', 'var') && params.SelectDICOMS.DCE
      end
      ctx2write = volT2;
      ctx2write.imgs = vol_dce_t2;
-     OAR_write_dicom( ctx2write, T2_ref_dcm_dir, dce_dcm_dir, dce_dcm_label, dce_dcm_seriesnum, 'MR' );
+     dcm_hdr_struct = dcminfo_T2;
+     dcm_hdr_struct.SeriesDescription = dce_dcm_label;
+     dcm_hdr_struct.SeriesNumber = dce_dcm_seriesnum;
+     dicomwrite_cmig(ctx2write, outpath_dcm, dcm_hdr_struct);
    else
-     OAR_write_dicom( ctx_dce, DCE_path{1}, dce_dcm_dir, dce_dcm_label, dce_dcm_seriesnum, 'MR' );
+     fname_dce = dir(DCE_path{1});
+     fname_dce = fullfile(fname_dce(3).folder, fname_dce(3).name);
+     dcm_hdr_struct = dicominfo(fname_dce);
+     dcm_hdr_struct.SeriesDescription = dce_dcm_label;
+     dcm_hdr_struct.SeriesNumber = dce_dcm_seriesnum;
+     dicomwrite_cmig(ctx_dce, outpath_dcm, dcm_hdr_struct);
    end
 
 end
@@ -1134,7 +1154,6 @@ end
 % DWI
 if params.SelectDICOMS.DWI
   fprintf('%s -- %s.m:    Writing DWI DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
-  DWI_ref_dcm_dir = RSI_path;
   DWI_dcm_label = 'RSI_DWI_averages';
   DWI_dcm_seriesnum = 6970;
      
@@ -1147,9 +1166,15 @@ if params.SelectDICOMS.DWI
 
     if exist('volT2', 'var')
       ctx2write = vol_resample(ctx2write, volT2, eye(4));
-      OAR_write_dicom( ctx2write, T2_ref_dcm_dir, dwi_dcm_dir, dwi_label, DWI_dcm_seriesnum, 'MR' );
+      dcm_hdr_struct = dcminfo_T2;
+      dcm_hdr_struct.SeriesDescription = dwi_label;
+      dcm_hdr_struct.SeriesNumber = DWI_dcm_seriesnum;
+      dicomwrite_cmig(ctx2write, dwi_dcm_dir, dcm_hdr_struct);
     else 
-      OAR_write_dicom( ctx2write, DWI_ref_dcm_dir, dwi_dcm_dir, dwi_label, DWI_dcm_seriesnum, 'MR' );
+      dcm_hdr_struct = dcminfo;
+      dcm_hdr_struct.SeriesDescription = dwi_label;
+      dcm_hdr_struct.SeriesNumber = DWI_dcm_seriesnum;
+      dicomwrite_cmig(ctx2write, dwi_dcm_dir, dcm_hdr_struct);
     end
 
     DWI_dcm_seriesnum = DWI_dcm_seriesnum + 1;
@@ -1161,23 +1186,36 @@ end
 % ADC
 if params.SelectDICOMS.ADC
   fprintf('%s -- %s.m:    Writing ADC DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
-  ADC_ref_dcm_dir = RSI_path;
   ADC_dcm_label = 'ADC';
   ADC_dcm_seriesnum = 8008;
      
   ctx2write = mean_DWI_ctx_avg;
   ctx2write.imgs = 1e6 .*  conv_ADC_vol_avg;
 
-  newmetaADC.RescaleSlope = 1/1e6;
-  newmetaADC.RescaleIntercept = 0;
-  newmetaADC.WindowWidth = '';
-  newmetaADC.WindowCenter = '';
+  RescaleSlope = 1/1e6;
+  RescaleIntercept = 0;
+  WindowWidth = '';
+  WindowCenter = '';
 
   if exist('volT2', 'var')
     ctx2write = vol_resample(ctx2write, volT2, eye(4));
-    OAR_write_dicom( ctx2write, T2_ref_dcm_dir, fullfile(dcm_write_dir, ADC_dcm_label), ADC_dcm_label, ADC_dcm_seriesnum, 'MR', newmetaADC );
+    dcm_hdr_struct = dcminfo_T2;
+    dcm_hdr_struct.SeriesDescription = ADC_dcm_label;
+    dcm_hdr_struct.SeriesNumber = ADC_dcm_seriesnum;
+    dcm_hdr_struct.RescaleSlope = RescaleSlope;
+    dcm_hdr_struct.RescaleIntercept = RescaleIntercept;
+    dcm_hdr_struct.WindowWidth = WindowWidth;
+    dcm_hdr_struct.WindowCenter = WindowCenter;
+    dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, ADC_dcm_label), dcm_hdr_struct);
   else 
-    OAR_write_dicom( ctx2write, DWI_ref_dcm_dir, fullfile(dcm_write_dir, ADC_dcm_label), ADC_dcm_label, ADC_dcm_seriesnum, 'MR', newmetaADC );
+    dcm_hdr_struct = dcminfo;
+    dcm_hdr_struct.SeriesDescription = ADC_dcm_label;
+    dcm_hdr_struct.SeriesNumber = ADC_dcm_seriesnum;
+    dcm_hdr_struct.RescaleSlope = RescaleSlope;
+    dcm_hdr_struct.RescaleIntercept = RescaleIntercept;
+    dcm_hdr_struct.WindowWidth = WindowWidth;
+    dcm_hdr_struct.WindowCenter = WindowCenter;
+    dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, ADC_dcm_label), dcm_hdr_struct);
   end
 
 end
@@ -1186,7 +1224,6 @@ end
 % RSI C maps
 if params.SelectDICOMS.RSICmaps
   fprintf('%s -- %s.m:    Writing RSI C map DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
-  DWI_ref_dcm_dir = RSI_path;
   RSI_C_label = 'RSI_C';
   RSI_C_seriesnum = 4200;
   
@@ -1200,9 +1237,15 @@ if params.SelectDICOMS.RSICmaps
 
     if exist('volT2', 'var')
       ctx2write = vol_resample(ctx2write, volT2, eye(4));
-      OAR_write_dicom( ctx2write, T2_ref_dcm_dir, rsi_dcm_dir, rsi_label, RSI_C_seriesnum, 'MR' );
+      dcm_hdr_struct = dcminfo_T2;
+      dcm_hdr_struct.SeriesDescription = rsi_label;
+      dcm_hdr_struct.SeriesNumber = RSI_C_seriesnum;
+      dicomwrite_cmig(ctx2write, rsi_dcm_dir, dcm_hdr_struct);
     else
-      OAR_write_dicom( ctx2write, DWI_ref_dcm_dir, rsi_dcm_dir, rsi_label, RSI_C_seriesnum, 'MR' );
+      dcm_hdr_struct = dcminfo;
+      dcm_hdr_struct.SeriesDescription = rsi_label;
+      dcm_hdr_struct.SeriesNumber = RSI_C_seriesnum;
+      dicomwrite_cmig(ctx2write, rsi_dcm_dir, dcm_hdr_struct);
     end
 
     RSI_C_seriesnum = RSI_C_seriesnum + 1;
@@ -1214,7 +1257,6 @@ end
 % RSI biomarker
 if exist('mb0', 'var') && params.SelectDICOMS.RSIrs
    fprintf('%s -- %s.m:    Writing RSI biomarker DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
-   DWI_ref_dcm_dir = RSI_path;
    label = 'RSIrs_Experimental';
    seriesnum = 666;
 
@@ -1222,9 +1264,12 @@ if exist('mb0', 'var') && params.SelectDICOMS.RSIrs
    ctx2write.imgs = RSIrs_avg;
    ctx2write = vol_resample(ctx2write, volT2, eye(4));
 
-   newmeta1.WindowWidth = 100;
-   newmeta1.WindowCenter = 130;
-   OAR_write_dicom( ctx2write, T2_ref_dcm_dir, fullfile(dcm_write_dir, label), label, seriesnum, 'MR', newmeta1 );
+   dcm_hdr_struct = dcminfo_T2;
+   dcm_hdr_struct.SeriesDescription = label;
+   dcm_hdr_struct.SeriesNumber = seriesnum;
+   dcm_hdr_struct.WindowWidth = 100;
+   dcm_hdr_struct.WindowCenter = 130;
+   dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, label), dcm_hdr_struct);
 end
 
 
@@ -1236,13 +1281,14 @@ if exist('vol_overlay', 'var') && params.SelectDICOMS.RSIrsOverlay
 
    ctx2write = vol_overlay;
    ctx2write.imgs = 255 .* ctx2write.imgs;
-   newmeta2.ColorType = 'truecolor';
-   newmeta2.SamplesPerPixel = 3;
-   newmeta2.PhotometricInterpretation = 'RGB';
-   newmeta2.SmallestImagePixelValue = 0;
-   newmeta2.LargestImagePixelValue = 255;
-   newmeta2.BitDepth = 8;
-   OAR_write_dicom( ctx2write, T2_ref_dcm_dir, fullfile(dcm_write_dir, label), label, seriesnum, 'MR', newmeta2 );
+   dcm_hdr_struct = dcminfo_T2;
+   dcm_hdr_struct.ColorType = 'truecolor';
+   dcm_hdr_struct.SamplesPerPixel = 3;
+   dcm_hdr_struct.PhotometricInterpretation = 'RGB';
+   dcm_hdr_struct.SmallestImagePixelValue = 0;
+   dcm_hdr_struct.LargestImagePixelValue = 255;
+   dcm_hdr_struct.BitDepth = 8;
+   dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, label), dcm_hdr_struct);
 end
 
 
