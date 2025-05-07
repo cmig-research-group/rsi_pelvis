@@ -6,7 +6,8 @@ t = num2str(t);
 t = strrep(t, '.', '');
 
 fname_sh = fullfile(sorted_dir, sprintf('mv_cmds_%s.sh',t) );
-generate_cmds(data_dir, sorted_dir, fname_sh, {});
+study_uids = struct;
+study_uids = generate_cmds(data_dir, sorted_dir, fname_sh, study_uids);
 
 disp('Moving all those files...');
 cmd1 = ['chmod 777 ' fname_sh];
@@ -46,19 +47,25 @@ for i = 1:length(contents)
 
     try
       info = dicominfo(item);
-      study_date = info.StudyDate;
 
       study_uid = info.StudyInstanceUID;
-      study_num = find(strcmp(study_uid, study_uids));
-      if isempty(study_num)
-	 study_uids{end+1} = study_uid;
-	 study_num = length(study_uids);
-      end
-
       subject_name = info.PatientName.FamilyName;
       subject_name = nixify(subject_name);
-      subject_ID = info.PatientID;
+      study_date = info.StudyDate;      
+      name_and_date = [subject_name '_' study_date];
+      if ~isfield(study_uids, name_and_date)
+	study_uids.(name_and_date) = {};
+      end
+      uids_list = study_uids.(name_and_date);
+      study_num = find(strcmp(study_uid, uids_list));
+      if isempty(study_num)
+         uids_list{end+1} = study_uid;
+         study_num = length(uids_list);
+	 study_uids.(name_and_date) = uids_list;
+      end
 
+      subject_ID = info.PatientID;
+      
       series_num = info.SeriesNumber;
       if ~isfield(info, 'SeriesDescription')
 	 info.SeriesDescription = ['series' num2str(series_num)];
