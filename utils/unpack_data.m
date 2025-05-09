@@ -51,6 +51,13 @@ for i = 1:length(contents)
       study_uid = info.StudyInstanceUID;
       subject_name = info.PatientName.FamilyName;
       subject_name = nixify(subject_name);
+      pad_flag = 0;
+      num_inds = regexp(subject_name, '\d');
+      if ~isempty(num_inds) && (num_inds(1) == 1)
+	 pad_flag = 1;
+	 subject_name = ['PAD' subject_name];
+      end
+
       study_date = info.StudyDate;      
       name_and_date = [subject_name '_' study_date];
       if ~isfield(study_uids, name_and_date)
@@ -86,7 +93,11 @@ for i = 1:length(contents)
 	subject_name = 'UnknownName';
       end
 
-      subject_dir = fullfile(sorted_dir, subject_name);
+      if pad_flag == 0
+	subject_dir = fullfile(sorted_dir, subject_name);
+      else
+	subject_dir = fullfile(sorted_dir, subject_name(4:end));
+      end
       if ~exist(subject_dir, 'dir')
 	mkdir(subject_dir);
       end
