@@ -60,6 +60,7 @@ for i = 1:length(contents)
 
       study_date = info.StudyDate;      
       name_and_date = [subject_name '_' study_date];
+      name_and_date = strrep(name_and_date, '-', '_');
       if ~isfield(study_uids, name_and_date)
 	study_uids.(name_and_date) = {};
       end
@@ -120,8 +121,8 @@ for i = 1:length(contents)
 
       fprintf(fID, 'mv ''%s'' ''%s%c%s''\n', item, series_dir, filesep, contents(i).name);
       
-    catch
-      continue
+    catch ME
+      disp(ME.message);
     end
 
   end

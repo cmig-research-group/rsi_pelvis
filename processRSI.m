@@ -523,6 +523,21 @@ else
 
 end
 
+% Check for hip implant -------------------------------------------------
+if strcmpi(params.ProstateSegContainer, 'docker')
+  container_path_in = '/data_in/T2_corrected_GUW.mgz';
+  cmd = sprintf('sudo docker run -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
+elseif strcmpi(params.ProstateSegContainer, 'singularity')
+end
+disp(['Command: ' cmd]);
+[status, cmdout] = system(cmd);
+cmdout = split(cmdout);
+match_notempty = find(~cellfun(@isempty, cmdout));
+has_implant = str2double(cmdout{match_notempty});
+if has_implant
+  disp('WARNING: Patient may have hip implant')
+end
+
 
 %% ========================== Start Processing ========================== %%
 % B0 distortion correction
@@ -626,31 +641,64 @@ if (params.ProstateSeg == 1) && (T2_flag ~= 0)
     contour_dwi_space = vol_resample(contour, target, eye(4));
     QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
     contour_exists = 1;
+    prostate_detector_output = 1;
   end
 
   if contour_exists == 0
 
     if strcmpi(params.ProstateSegVendor, 'cmig')
       fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
-      contour = contour_prostate_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+      [contour, prostate_detector_output] = contour_prostate_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
 
     elseif strcmpi(params.ProstateSegVendor, 'cortechs')
       fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CorTechs'' software...\n',datestr(now),mfilename);
-      contour = contour_prostate_cortechs( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+      [contour, prostate_detector_output] = contour_prostate_cortechs( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
 
     else
       error('Prostate segmentation was enabled, but ProstateSegVendor parameter was not recognized');
     end
 
-    if isempty(contour)
-      params.ProstateSeg = 0;
-    else
+    if ~isempty(contour)
       cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'prostate_contour_T2_space.mgz')];
       system(cmd);
       fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
       target = QD_ctx_load_mgh(fname_corr);
       contour_dwi_space = vol_resample(contour, target, eye(4));
       QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+    end
+
+  end
+
+end
+
+
+% Segment urethra from T2 volume -----------------------------------------
+if (params.UrethraSeg == 1) && (T2_flag ~= 0)
+
+  % Check if urethra has already been contoured for another RSI series
+  contour_exists = 0;
+  path_date = fullfile(output_path, '../');
+  cmd = sprintf('find %s -name "urethra_contour_T2_space.mgz"', path_date);
+  [~, cmdout] = system(cmd);
+  if ~isempty(cmdout)
+    fprintf('%s -- %s.m:    Copying urethra contour from another RSI series...\n',datestr(now),mfilename);
+    cmdout = split(cmdout);
+    match_contour = find(~cellfun(@isempty, cmdout));
+    path_contour = cmdout{match_contour};
+    copyfile(path_contour, output_path);
+    contour_urethra = QD_ctx_load_mgh(fullfile(output_path, 'urethra_contour_T2_space.mgz'));
+    contour_exists = 1;
+  end
+
+  if contour_exists == 0
+
+    contour_urethra = contour_urethra_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.UrethraSegContainer );
+
+    if isempty(contour_urethra)
+      params.UrethraSeg = 0;
+    else
+      cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'urethra_contour_T2_space.mgz')];
+      system(cmd);
     end
 
   end
@@ -934,20 +982,42 @@ if exist('RSIrs_fwd', 'var')
   end
   QD_save_mgh( RSIrs_avg, fullfile(output_path,'meanFwdRev_RSIrs.mgz'), M );
   ctx_RSIrs_avg = mgh2ctx(RSIrs_avg, M);
+  ctx_RSIrs_avg_T2_space = vol_resample(ctx_RSIrs_avg, volT2, eye(4));
+else
+  ctx_RSIrs_avg = [];
+  ctx_RSIrs_avg_T2_space = [];
 end
 
 
 % Identify prostate lesions ------------------------------------------------
 if exist('contour_dwi_space', 'var')
-  vol_lesions = lesion_id(contour_dwi_space, ctx_RSIrs_avg);
-end
 
+  smf = 0.5;
+  [vol_lesions, vec_rsirs_max] = lesion_seg_prostate(ctx_RSIrs_avg, contour_dwi_space, smf);
+  if ~isempty(vol_lesions)
+    ctx_lesions = mgh2ctx(vol_lesions, M);
+    QD_ctx_save_mgh(ctx_lesions, fullfile(output_path,'lesion_contours_DWI_space.mgz'));
+  else
+    ctx_lesions = [];
+    fprintf('No prostate lesions identified\n');
+  end
 
-%% ========================== Create color overlay ============================= %%
-if exist('RSIrs_avg', 'var') && T2_flag
-   ctx_RSIrs_avg = vol_resample(ctx_RSIrs_avg, volT2, eye(4));
-   color_range = [80 180];
-   vol_overlay = create_color_overlay(ctx_RSIrs_avg, volT2, color_range);
+  if ~isempty(vol_lesions) && T2_flag
+    ctx_lesions_T2_space = volT2;
+    ctx_lesions_T2_space.imgs = zeros(rows_T2, cols_T2, slices_T2, size(vol_lesions,4));
+    vol_RSIrs_avg_T2_space = ctx_RSIrs_avg_T2_space.imgs;
+    for i = 1:size(vol_lesions,4)
+      tmp_ctx = ctx_lesions;
+      tmp_ctx.imgs = ctx_lesions.imgs(:,:,:,i);
+      tmp_resamp = vol_resample(tmp_ctx, volT2, eye(4));
+      ctx_lesions_T2_space.imgs(:,:,:,i) = tmp_resamp.imgs;
+      vol_lesion = logical(ctx_lesions_T2_space.imgs(:,:,:,i));
+      vec_rsirs_max(i) = max(vol_RSIrs_avg_T2_space(vol_lesion));
+    end
+  else
+    ctx_lesions_T2_space = [];
+  end
+
 end
 
 
@@ -1222,6 +1292,13 @@ end
 
 
 % RSI C maps
+% (Return these images if RSIrs was requested but could not be computed for some reason,
+% e.g., if the patient had a prostatectomy)
+if params.SelectDICOMS.RSIrs && ~exist('mb0', 'var')
+   params.SelectDICOMS.RSICmaps = 1;
+   fprintf('%s -- %s.m:    RSIrs could not be computed, writing qualitative RSI C maps instead\n', datestr(now), mfilename);
+end
+
 if params.SelectDICOMS.RSICmaps
   fprintf('%s -- %s.m:    Writing RSI C map DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
   RSI_C_label = 'RSI_C';
@@ -1273,13 +1350,16 @@ if exist('mb0', 'var') && params.SelectDICOMS.RSIrs
 end
 
 
-% RSIrs color overlay
-if exist('vol_overlay', 'var') && params.SelectDICOMS.RSIrsOverlay
-   fprintf('%s -- %s.m:    Writing RSI biomarker color overlay ---------------------------------------------------\n', datestr(now), mfilename);
-   label = 'RSIrs_Overlay_Experimental';
+% RSI Visual Report
+if params.SelectDICOMS.RSIrsReportOverlay && T2_flag && exist('contour', 'var')
+
+   ctx_report = create_visual_report(volT2, contour, ctx_RSIrs_avg_T2_space, ctx_lesions_T2_space, prostate_detector_output, has_implant);
+
+   fprintf('%s -- %s.m:    Writing RSI Visual Report ---------------------------------------------------\n', datestr(now), mfilename);
+   label = 'RSI_Visual_Report';
    seriesnum = 667;
 
-   ctx2write = vol_overlay;
+   ctx2write = ctx_report;
    ctx2write.imgs = 255 .* ctx2write.imgs;
    dcm_hdr_struct = dcminfo_T2;
    dcm_hdr_struct.ColorType = 'truecolor';
@@ -1288,6 +1368,8 @@ if exist('vol_overlay', 'var') && params.SelectDICOMS.RSIrsOverlay
    dcm_hdr_struct.SmallestImagePixelValue = 0;
    dcm_hdr_struct.LargestImagePixelValue = 255;
    dcm_hdr_struct.BitDepth = 8;
+   dcm_hdr_struct.SeriesDescription = label;
+   dcm_hdr_struct.SeriesNumber = seriesnum;
    dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, label), dcm_hdr_struct);
 end
 
@@ -1307,7 +1389,7 @@ if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_RT
    elseif exist(fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0'), 'dir')
      path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
    end
-   RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'Prostate_Mask_RTst_DWI'), 'Prostate_Mask_AutoSeg', 999); 
+   RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'Prostate_Mask_RTst_DWI'), 'Prostate_Mask_AutoSeg', 998); 
 
 end
 
@@ -1348,17 +1430,35 @@ if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
 end
 
 
+% Urethra mask RT                                      
+if exist('contour_urethra', 'var') && params.SelectDICOMS.UrethraAutoSeg_RT
+   fprintf('%s -- %s.m:    Writing urethra mask RTstruct DICOM ---------------------------------------------------\n', datestr(now), mfilename);
+   segSTRUCT.number = 1;
+   segSTRUCT.name = 'Urethra_Autoseg';
+
+   segSTRUCT.seg = contour_urethra.imgs;
+
+   if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
+     path_ref = fullfile(dcm_write_dir, 'RSIrs_Experimental');
+   elseif exist(fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1'), 'dir')
+     path_ref = fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1');
+   elseif exist(fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0'), 'dir')
+     path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
+   end
+   RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'Urethra_Mask_RTst_DWI'), 'Urethra_Mask_AutoSeg', 999);
+
+end
+
+
 % Lesion masks RT
 if exist('vol_lesions', 'var')
   if ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
     fprintf('%s -- %s.m:    Writing lesion mask RTstruct DICOM ---------------------------------------------------\n', datestr(now), mfilename);
 
-    for i = 1:length(vol_lesions)
-      segSTRUCT(i).number = i; 
-      segSTRUCT(i).name = ['Lesion_Autoseg_' num2str(i)]; 
-      ctx_lesion = mgh2ctx(vol_lesions{i}, M);
-      ctx_lesion_t2 = vol_resample(ctx_lesion, volT2, eye(4));
-      segSTRUCT(i).seg = ctx_lesion_t2.imgs; 
+    for i = 1:size(vol_lesions,4)
+      segSTRUCT(i).number = i;
+      segSTRUCT(i).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
+      segSTRUCT(i).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
     end
 
     if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
@@ -1404,13 +1504,11 @@ if exist('vol_lesions', 'var')
 
     seg_fields.data = volT2;
     seg_fields.data.imgs = [];
-    for i = 1:length(vol_lesions)
-      ctx_lesion = mgh2ctx(vol_lesions{i}, M);
-      ctx_lesion_t2 = vol_resample(ctx_lesion, volT2, eye(4));
-      seg_fields.data.imgs = cat(4, seg_fields.data.imgs, ctx_lesion_t2.imgs);
+    for i = 1:size(vol_lesions,4)
+      seg_fields.data.imgs = cat(4, seg_fields.data.imgs, ctx_lesions_T2_space.imgs(:,:,:,i));
       seg_fields.description(i).type = 'Abnormal';
       seg_fields.description(i).tracking_id = 'RSI-bright lesion';
-      seg_fields.description(i).label = ['Lesion_' num2str(i)];
+      seg_fields.description(i).label = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
     end
 
     write_dicom_seg(seg_fields, fullfile(dcm_write_dir, 'Lesion_Mask_SEG_DWI'), params.PythonVEnv);

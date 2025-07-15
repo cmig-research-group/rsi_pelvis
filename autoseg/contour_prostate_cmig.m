@@ -1,13 +1,38 @@
-function prostate_mask = contour_prostate_cmig(path_to_axT2_mgz, container)
+function [prostate_mask, prostate_detector_output] = contour_prostate_cmig(path_to_axT2_mgz, container)
 
-[filepath, name, ~] = fileparts(path_to_axT2_mgz);
+[filepath, name, ext] = fileparts(path_to_axT2_mgz);
 path_input = fullfile(filepath, 'seg');
 path_output = filepath;
 mkdir(path_input);
+
+% First, check to see if there is a prostate in the volume
+if strcmpi(container, 'docker')
+  container_path_in = sprintf('/data_in/%s%s', name, ext);
+  cmd = sprintf('sudo docker run -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, container_path_in);
+elseif strcmpi(container, 'singularity')
+  path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+  path_tmp = fullfile(filepath, 'tmp');
+  mkdir(path_tmp);
+  cmd = sprintf('singularity run -B %s:/data_in -B %s:/data_out_predict -B %s:/data_out %s', path_input, path_tmp, path_output, path_sif);
+end
+disp(['Command: ' cmd]);
+[status, cmdout] = system(cmd);
+cmdout = split(cmdout);
+match_notempty = find(~cellfun(@isempty, cmdout));
+has_prostate = str2double(cmdout{match_notempty});
+
+if ~has_prostate
+  disp('WARNING: Patient may not have prostate');
+  prostate_detector_output = 0;
+else
+  prostate_detector_output = 1;
+end
+
+% Segment prostate from volume
 fname_nifti = fullfile(path_input, 'prostate_900_0000.nii.gz');
 
 ctx_t2 = QD_ctx_load_mgh(path_to_axT2_mgz);
-ctx_save_nifti(ctx_t2, fname_nifti)
+ctx_save_nifti(ctx_t2, fname_nifti);
 
 if ~isdeployed
 

@@ -45,7 +45,8 @@ patterns_T2_sag_cube = 'Sag';
 
 % Conventional DWI
 seqID_DWI_GE = 'epi2';
-patterns_DWI = 'DWI';
+patterns_DWI = {'DWI', 'FOCUS'};
+patterns_exclude_DWI = {'RSI', 'ADC'};
 
 % Conventional ADC
 patterns_ADC = 'ADC';
@@ -173,7 +174,10 @@ for i = 1:length(acqs)
     end
 
     % Check for conventional DWI
-    if strcmp(seq_name, seqID_DWI_GE) && ~isempty(regexpi(SeriesDescription, patterns_DWI))
+    match_DWI_seq = strcmp(seq_name, seqID_DWI_GE);
+    match_DWI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_DWI)));
+    match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_DWI)));
+    if (match_DWI_seq || match_DWI_name) && ~match_exclude
        paths.DWI_conventional{DWI_conventional_path_num} = acq_path;
        DWI_conventional_path_num = DWI_conventional_path_num + 1;
     end

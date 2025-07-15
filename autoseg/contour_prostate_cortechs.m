@@ -1,4 +1,4 @@
-function prostate_mask = contour_prostate_cortechs(path_to_axT2_mgz, container)
+function [prostate_mask, prostate_detector_output] = contour_prostate_cortechs(path_to_axT2_mgz, container)
 
 [filepath, name, ~] = fileparts(path_to_axT2_mgz);
 name_seg = [name '_seg.mgz'];
@@ -48,8 +48,11 @@ if ~any(contour.imgs(:)) % Prostate mask is all zeros
   disp('WARNING: Prostate segmentation returned blank mask');
   delete( fullfile(filepath, name_seg) );
   prostate_mask = [];
+  prostate_detector_output = 0;
 
 else
+
+  prostate_detector_output = 1;
 
   % Make sure segmentation has same slice ordering as T2 volume
   slice_ordering_T2 = round(volT2.Mvxl2lph(3,3));
