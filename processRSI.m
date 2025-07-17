@@ -526,7 +526,7 @@ end
 % Check for hip implant -------------------------------------------------
 if strcmpi(params.ProstateSegContainer, 'docker')
   container_path_in = '/data_in/T2_corrected_GUW.mgz';
-  cmd = sprintf('sudo docker run -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
+  cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
 elseif strcmpi(params.ProstateSegContainer, 'singularity')
 end
 disp(['Command: ' cmd]);

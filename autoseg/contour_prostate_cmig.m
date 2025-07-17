@@ -8,7 +8,7 @@ mkdir(path_input);
 % First, check to see if there is a prostate in the volume
 if strcmpi(container, 'docker')
   container_path_in = sprintf('/data_in/%s%s', name, ext);
-  cmd = sprintf('sudo docker run -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, container_path_in);
+  cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, container_path_in);
 elseif strcmpi(container, 'singularity')
   path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
   path_tmp = fullfile(filepath, 'tmp');
@@ -37,7 +37,7 @@ ctx_save_nifti(ctx_t2, fname_nifti);
 if ~isdeployed
 
   if strcmpi(container, 'docker')
-    cmd = sprintf('sudo docker run -v %s:/data_in -v %s:/data_out localhost/autoseg_prostate', path_input, path_output);
+    cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in -v %s:/data_out localhost/autoseg_prostate', path_input, path_output);
   elseif strcmpi(container, 'singularity')
     path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
     path_tmp = fullfile(filepath, 'tmp');
