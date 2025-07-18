@@ -34,7 +34,7 @@ end
 report_title = '----- Visual Report -----';
 box_color = 'c';
 box_opacity = 0.9;
-font_size = 12;
+font_size = 11;
 
 if prostate_detector_output
   text_prostate = 'Detected';
@@ -50,7 +50,7 @@ else
   text_implant = 'None detected';
 end
 
-header = sprintf('%s\nAI feature-detection results:\n    Prostate: %s\n    Hip implants: %s\n', report_title, text_prostate, text_implant);
+header = sprintf('%s\nAI feature-detection results:\n    Prostate: %s\n    Hip implant: %s\n', report_title, text_prostate, text_implant);
 
 vol_report = ctx_overlay.imgs;
 [rows, cols, slices, ~] = size(vol_report);
