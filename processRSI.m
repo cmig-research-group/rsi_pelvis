@@ -432,7 +432,6 @@ if exist('rsidat_rev', 'var')
   save(fullfile(output_path, 'REV_qmat.mat'), 'qmat_rev');
 end
 
-keyboard
 uqvecs = unique(qmat, 'rows');
 if size(uqvecs, 1) == 1 || any(isnan(uqvecs(:)))
    disp('WARNING: Bad qmat, disabling eddy current correction and motion correction');

@@ -34,8 +34,6 @@ fname_nifti = fullfile(path_input, 'prostate_900_0000.nii.gz');
 ctx_t2 = QD_ctx_load_mgh(path_to_axT2_mgz);
 ctx_save_nifti(ctx_t2, fname_nifti);
 
-keyboard
-
 if ~isdeployed
 
   if strcmpi(container, 'docker')
