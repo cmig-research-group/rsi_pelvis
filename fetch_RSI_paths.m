@@ -175,9 +175,10 @@ for i = 1:length(acqs)
 
     % Check for conventional DWI
     match_DWI_seq = strcmp(seq_name, seqID_DWI_GE);
+    match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, seqID_RSI_GE)));
     match_DWI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_DWI)));
     match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_DWI)));
-    if (match_DWI_seq || match_DWI_name) && ~match_exclude
+    if (match_DWI_seq || match_DWI_name) && ~match_RSI_seq && ~match_exclude
        paths.DWI_conventional{DWI_conventional_path_num} = acq_path;
        DWI_conventional_path_num = DWI_conventional_path_num + 1;
     end
