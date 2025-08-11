@@ -15,9 +15,7 @@ if ~isdeployed
     cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in -v %s:/data_out --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output);
   elseif strcmpi(container, 'singularity')
     path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
-    path_tmp = fullfile(filepath, 'tmp');
-    mkdir(path_tmp);
-    cmd = sprintf('singularity run -B %s:/data_in -B %s:/data_out_predict -B %s:/data_out %s', path_input, path_tmp, path_output, path_sif); 
+    cmd = sprintf('singularity exec -B %s:/data_in -B %s:/data_out %s /app/miniconda3/bin/conda run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output, path_sif);
   end
   disp(['Command: ' cmd]);
   system(cmd);
