@@ -1,20 +1,31 @@
-function status = processRSI(RSI_path, RSI_path_rev, T2_path, DCE_path, output_path, params)
+function processRSI(RSI_path, RSI_path_rev, T2_path, DCE_path, output_path, params)
 % processRSI - Process RSI data set
 %
 % Input Arguments
 %   RSI_path: Path to directory containing DICOM files for a single RSI series
-%   RSI_path_rev (optional): Path to directory containing DICOM files for a single RSI series with phase-encoding direction opposite to that of RSI_path
-%   T2_path (optional): Path to directory containing DICOM files for a reference anatomical T2w volume
-%   DCE_path (optional): Path to directory (or directories) containing DICOM files for the raw (unsubtracted) images from a single DCE acquisition
-%                        Type: Cell array containing one or more character vectors; {'', '', ''} 
+%             Type: Character vector; '/path/to/directory'	      
+%   RSI_path_rev: Path to directory containing DICOM files for a single RSI series with phase-encoding direction opposite to that of RSI_path
+%                 Type: Character vector; '/path/to/directory'
+%                 Use empty char vector, '', if not present
+%   T2_path: Path to directory containing DICOM files for a reference anatomical T2-weighted volume
+%            Type: Character vector; '/path/to/directory'
+%	     Use empty char vector, '', if not present
+%   DCE_path: Path to directory (or directories) containing DICOM files for the raw (unsubtracted) images from a single DCE acquisition
+%             Type: Cell array containing one or more character vectors; {'/path/one', '/path/two', '/path/three'} 
+%             Use cell containing an empty char vector, {''}, if not present
 %   output_path: Path to directory where results will be saved
+%                Type: Character vector; '/path/to/directory'
 %   params: Structure of input parameters
+%           Type: MATLAB struct
+
+
+% Unset LD_PRELOAD environment variable for system calls to singularity
+% Otherwise need to parse glibc warnings
+orig_LD_PRELOAD = getenv('LD_PRELOAD');
+setenv('LD_PRELOAD', '');
 
 
 %% ============== Parse Inputs ============== %%
-
-status = 1;
-
 % Make output directory
 if ~exist(output_path,'dir')
     mkdir(output_path);
@@ -50,7 +61,6 @@ end
 
 
 %% ============== load RSI Data ============== %%
-
 % check dicom data
 impax_flag = 0;
 
@@ -74,7 +84,32 @@ if ~exist('dcminfo','var')
     error('No RSI DICOMs found.'); 
 end
 
+% Check for enhanced DICOMs
+enhanced_flag = 0;
+if isfield(dcminfo, 'PerFrameFunctionalGroupsSequence')
+  enhanced_flag = 1;
+end
+
+% Collect some DICOM header info
 Manufacturer = dcminfo.Manufacturer;
+ModelName = dcminfo.ManufacturerModelName;
+if enhanced_flag
+  InPlanePhaseEncodingDirection = dcminfo.SharedFunctionalGroupsSequence.Item_1.MRFOVGeometrySequence.Item_1.InPlanePhaseEncodingDirection;
+  TE = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.MREchoSequence.Item_1.EffectiveEchoTime;
+  TR = dcminfo.SharedFunctionalGroupsSequence.Item_1.MRTimingAndRelatedParametersSequence.Item_1.RepetitionTime;
+  AcquisitionMatrix = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+  PixelSpacing = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
+else
+  InPlanePhaseEncodingDirection = dcminfo.InPlanePhaseEncodingDirection;
+  TE = dcminfo.EchoTime;
+  TR = dcminfo.RepetitionTime;
+  if isfield(dcminfo, 'AcquisitionMatrix')
+    AcquisitionMatrix = dcminfo.AcquisitionMatrix;
+  else
+    AcquisitionMatrix = [];
+  end
+  PixelSpacing = dcminfo.PixelSpacing;
+end
 
 % Read vendor-specific tag labels
 if strcmpi(Manufacturer, 'ge medical systems')
@@ -94,7 +129,6 @@ end
 
 if isfield(dcminfo, 'Private_0043_1039') == 1 && strcmp(class(dcminfo.Private_0043_1039),'char') == 1
    impax_flag = 1;
-   params.B0DISCO = 0;
    params.EddyCorrFlag = 0;
    params.MotionCorrFlag = 0;
 end
@@ -260,22 +294,20 @@ switch lower(Manufacturer)
     integrated_rev_flag = 0;
     integrated_rev_flag_rev = 0;
 
-    [rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo] = ReadDicomDiffusionDataPhilips(RSI_path);
-    if bvals(end)>0 && all(qmat(end,:)==[0 0 0]) % Remove synthesized image if it exists
-      fprintf('Chopping off synthesized volume\n');
-      qmat = qmat(1:end-1,:);
-      bvals = bvals(1:end-1);
-      rsidat = rsidat(:,:,:,1:end-1);
-    end
+    [rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo, inds_synth] = ReadDicomDiffusionDataPhilips(RSI_path);
+    % Remove synthesized volumes
+    fprintf('Excising synthesized volume(s)\n');
+    qmat = qmat(~inds_synth,:);
+    bvals = bvals(~inds_synth);
+    rsidat = rsidat(:,:,:,~inds_synth);
 
     if ~isempty(RSI_path_rev)
-      [rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev] = ReadDicomDiffusionDataPhilips(RSI_path_rev);
-      if bvals_rev(end)>0 && all(qmat_rev(end,:)==[0 0 0]) % Remove synthesized image if it exists
-	fprintf('Chopping off synthesized volume\n');
-	qmat_rev = qmat_rev(1:end-1,:);
-	bvals_rev = bvals_rev(1:end-1);
-	rsidat_rev = rsidat_rev(:,:,:,1:end-1);
-      end
+      [rsidat_rev, M_rev, qmat_rev, bvals_rev, gwinfo_rsi_rev, dcminfo_rev, inds_synth] = ReadDicomDiffusionDataPhilips(RSI_path_rev);
+      % Remove synthesized volumes
+      fprintf('Excising synthesized volume(s)\n');
+      qmat_rev = qmat_rev(~inds_synth,:);
+      bvals_rev = bvals_rev(~inds_synth);
+      rsidat_rev = rsidat_rev(:,:,:,~inds_synth);
     end
 
 
@@ -314,7 +346,14 @@ end
 
 % Separate forward and reverse PE polarity volumes
 pedim = 2; % column direction - A/P
-if strcmp(dcminfo.InPlanePhaseEncodingDirection,'ROW')
+
+if enhanced_flag
+  InPlanePhaseEncodingDirection = dcminfo.SharedFunctionalGroupsSequence.Item_1.MRFOVGeometrySequence.Item_1.InPlanePhaseEncodingDirection;
+else
+  InPlanePhaseEncodingDirection = dcminfo.InPlanePhaseEncodingDirection;
+end
+
+if strcmp(InPlanePhaseEncodingDirection, 'ROW')
   fprintf('%s -- %s.m:    WARNING: Left/Right Phase encode direction!\n', datestr(now), mfilename);
   pedim = 1;
   params.B0DISCO = 0;
@@ -393,6 +432,7 @@ if exist('rsidat_rev', 'var')
   save(fullfile(output_path, 'REV_qmat.mat'), 'qmat_rev');
 end
 
+keyboard
 uqvecs = unique(qmat, 'rows');
 if size(uqvecs, 1) == 1 || any(isnan(uqvecs(:)))
    disp('WARNING: Bad qmat, disabling eddy current correction and motion correction');
@@ -423,11 +463,8 @@ if exist('rsidat_rev', 'var')
 end
 
 
-% Collect some RSI protocol parameters
+% Display RSI protocol parameters
 nFrames = length(bvals);
-TE = dcminfo.EchoTime;
-TR = dcminfo.RepetitionTime;
-ModelName = dcminfo.ManufacturerModelName;
 
 fprintf('\n\n');
 fprintf('Protocol Parameters:\n');
@@ -449,27 +486,39 @@ if exist('bvals_rev', 'var')
 end
 
 [rows, cols, slices, ~] = size(rsidat);
-if isfield(dcminfo, 'AcquisitionMatrix')
-  matrix = double(dcminfo.AcquisitionMatrix);
+if ~isempty(AcquisitionMatrix)
+  matrix = double(AcquisitionMatrix);
   matrix = matrix(matrix~=0);
 else
   matrix = [rows cols]';
 end
-pixel_spacing = dcminfo.PixelSpacing;
-FOV_row = rows*pixel_spacing(1);
+FOV_row = rows*PixelSpacing(2);
 real_vxl_size_row = FOV_row./matrix(1);
 
 if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
+
+  if enhanced_flag
+    AcquisitionMatrix_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+    PixelSpacing_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
+  else
+    if isfield(dcminfo_rev, 'AcquisitionMatrix')
+      AcquisitionMatrix_rev = dcminfo_rev.AcquisitionMatrix;
+    else
+      AcquisitionMatrix_rev = [];
+    end
+    PixelSpacing_rev = dcminfo_rev.PixelSpacing;
+  end
+
   [rows_rev, cols_rev, slices_rev, ~] = size(rsidat_rev);
-  if isfield(dcminfo_rev, 'AcquisitionMatrix')
-    matrix_rev = double(dcminfo_rev.AcquisitionMatrix);
+  if ~isempty(AcquisitionMatrix_rev)
+    matrix_rev = double(AcquisitionMatrix_rev);
     matrix_rev = matrix_rev(matrix_rev~=0);
   else
     matrix_rev = [rows_rev cols_rev]';
   end
-  pixel_spacing_rev = dcminfo_rev.PixelSpacing;
-  FOV_row_rev = rows_rev*pixel_spacing_rev(1);
+  FOV_row_rev = rows_rev*PixelSpacing_rev(2);
   real_vxl_size_row_rev = FOV_row_rev./matrix_rev(1);
+
 end
 
 
@@ -498,13 +547,17 @@ if T2_flag ~= 0
     
   fprintf('%s -- %s.m:    Loading T2 data...\n',datestr(now),mfilename);
   fprintf('T2 series: %s\n', T2_path);
-  [volT2, gwarpInfoT2, dcminfo_T2] = ReadDicomT2Data(T2_path); volT2 = volT2{1};
+
+  [volT2, dcminfo_T2] = QD_read_dicomdir(T2_path);
+  [gwarpInfoT2, ~] = mmil_get_gradwarpinfo(dcminfo_T2(1));
   dcminfo_T2 = dcminfo_T2(1);
   [rows_T2, cols_T2, slices_T2, ~] = size(volT2.imgs);
-  matrix_T2 = double(dcminfo_T2.AcquisitionMatrix);
-  matrix_T2 = matrix_T2(matrix_T2~=0);
-  pixel_spacing_T2 = dcminfo_T2.PixelSpacing;
-  FOV_row_T2 = rows_T2*pixel_spacing_T2(1);
+  if enhanced_flag
+    PixelSpacing_T2 = dcminfo_T2.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
+  else
+    PixelSpacing_T2 = dcminfo_T2.PixelSpacing;
+  end
+  FOV_row_T2 = rows_T2*PixelSpacing_T2(2);
 
   % Unwarp T2
   fprintf('%s -- %s.m:    Unwarping T2...\n',datestr(now),mfilename);
@@ -524,10 +577,14 @@ else
 end
 
 % Check for hip implant -------------------------------------------------
+container_path_in = '/data_in/T2_corrected_GUW.mgz';
 if strcmpi(params.ProstateSegContainer, 'docker')
-  container_path_in = '/data_in/T2_corrected_GUW.mgz';
   cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
 elseif strcmpi(params.ProstateSegContainer, 'singularity')
+  path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+  path_tmp = fullfile(output_path, 'tmp');
+  mkdir(path_tmp);
+  cmd = sprintf('singularity exec -B %s:/data_in -B %s:/app/tmp %s /app/miniconda3/bin/conda run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, path_tmp, path_sif, container_path_in);
 end
 disp(['Command: ' cmd]);
 [status, cmdout] = system(cmd);
@@ -992,8 +1049,7 @@ end
 % Identify prostate lesions ------------------------------------------------
 if exist('contour_dwi_space', 'var')
 
-  smf = 0.5;
-  [vol_lesions, vec_rsirs_max] = lesion_seg_prostate(ctx_RSIrs_avg, contour_dwi_space, smf);
+  [vol_lesions, vec_rsirs_max] = lesion_seg_prostate(ctx_RSIrs_avg, contour_dwi_space);
   if ~isempty(vol_lesions)
     ctx_lesions = mgh2ctx(vol_lesions, M);
     QD_ctx_save_mgh(ctx_lesions, fullfile(output_path,'lesion_contours_DWI_space.mgz'));
@@ -1521,20 +1577,8 @@ end
 
 %% ========================== Finish ===================== %%
 
-fprintf('%s -- %s.m:    Cleaning up...\n',datestr(now),mfilename);
-
-if params.DebugFlag == 0
-    
-   if exist(fullfile(output_path, 'avgEIP.mgz'), 'file') ~= 0
-     delete( fullfile(output_path, 'avgEIP.mgz') );
-     delete( fullfile(output_path, 'difEIP.mgz') );
-     delete( fullfile(output_path, 'fJ.mgz') );
-     delete( fullfile(output_path, 'rJ.mgz') );
-   end
-
-end
-
-status = 0;
+% Return LD_PRELOAD to its original value
+setenv('LD_PRELOAD', orig_LD_PRELOAD);
 
 fprintf('%s -- %s.m:    Finished!\n\n\n',datestr(now),mfilename);
 
