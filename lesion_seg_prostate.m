@@ -25,6 +25,9 @@ for i = 1:length(CC.PixelIdxList)
   quarter_blob = round(size_blob/4);
   intersect_prostate = mask & vol_blob;
   size_intersection = sum(intersect_prostate(:));
+  if size_intersection == 0
+    continue
+  end
   quarter_within = size_intersection >= quarter_blob;
   vec_rsirs_intersect = vol_rsirs(intersect_prostate);
   rsirs_max_total = max(vec_rsirs_blob);

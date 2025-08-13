@@ -593,6 +593,9 @@ has_implant = str2double(cmdout{match_notempty});
 if has_implant
   disp('WARNING: Patient may have hip implant')
 end
+if exist('path_tmp', 'var')
+  rmdir(path_tmp, 's');
+end
 
 
 %% ========================== Start Processing ========================== %%
