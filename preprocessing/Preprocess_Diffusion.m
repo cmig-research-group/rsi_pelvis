@@ -12,13 +12,15 @@ end
 
 
 % Eddy current correction
-if EddyCorrFlag
+if EddyCorrFlag && ~isempty(qmat)
     fprintf('%s -- %s.m:    Running Eddy Current Correction...\n',datestr(now),mfilename);
     vol_ecc = QD_Eddy(vol_B0uw, qmat, bvals, pe_dim);
     fname_ecc = sprintf('%s/DWI_vol_preprocessed.mgz', outdir);
     QD_save_mgh(single(vol_ecc), fname_ecc, M);
 else
-    fprintf('%s -- %s.m:    WARNING: Skipping Eddy Current Correction...\n',datestr(now),mfilename);
+    if isempty(qmat)
+       fprintf('%s -- %s.m:    WARNING: No qmat, skipping eddy current correction...\n',datestr(now),mfilename);
+    end
     vol_ecc = vol_B0uw; 
     fname_ecc = sprintf('%s/DWI_vol_preprocessed.mgz', outdir);
     QD_save_mgh(single(vol_ecc), fname_ecc, M);
@@ -66,13 +68,16 @@ QD_save_mgh(single(vol_uw), fname_uw, M);
 
 
 % Motion Correction 
-if MotionCorrFlag
+if MotionCorrFlag && ~isempty(qmat)
     fprintf('%s -- %s.m:    Running Motion Correction...\n',datestr(now),mfilename);
     [vol_ecc_mc, qmat_mc, Mreg_mat] = QD_MotionCorr(vol_uw, M, qmat, bvals);
     fname_mc = sprintf('%s/DWI_vol_preprocessed.mgz', outdir);
     QD_save_mgh(single(vol_ecc_mc), fname_mc, M);
     save(sprintf('%s/qmat_corrected.mat', outdir), 'qmat_mc');
 else
+    if isempty(qmat)
+      fprintf('%s -- %s.m:    WARNING: No qmat, skipping motion correction...\n',datestr(now),mfilename);
+    end
     fname_mc = fname_uw;
     qmat_mc = qmat;
     save(sprintf('%s/qmat_corrected.mat', outdir), 'qmat_mc');

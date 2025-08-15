@@ -222,7 +222,11 @@ switch lower(Manufacturer)
         numt2s = dcminfo_rev.Private_0019_10df;
 	numdirs = dcminfo_rev.Private_0019_10e0;
         qmat_rev = ReadTensorFile(numdirs,numt2s,tensorfile);
-        bvals_rev = bmax_rev*sum(qmat_rev.^2,2);
+	if isempty(qmat_rev) % Whole body protocol has separate reverse scan that only has one b=0 and one max(b) volume (not tensor)
+	  bvals_rev = bvals_rev;
+	else
+          bvals_rev = bmax_rev*sum(qmat_rev.^2,2);
+	end
         
 	bvals_rev(bvals_rev<400) = round(bvals_rev(bvals_rev<400));
 	bvals_rev(bvals_rev>400&bvals_rev<1000) = round(bvals_rev(bvals_rev>400&bvals_rev<1000), -1);
@@ -232,28 +236,20 @@ switch lower(Manufacturer)
     end
 
     % Check if sequence is integrated or not
-    integrated_rev_flag = 1;
+    integrated_rev_flag = 0;
     if isfield(dcminfo, 'Private_0019_109c')
       pulse_seq_name = lower(dcminfo.Private_0019_109c);
       if ~isempty( strfind(pulse_seq_name, 'pepolar') )
 	integrated_rev_flag = 1;
-      elseif ~isempty(strfind(pulse_seq_name, 'art')) || ~isempty(strfind(pulse_seq_name, 'alt'))
-	integrated_rev_flag = 0;
-      elseif strcmp(pulse_seq_name, 'epi2')
-	integrated_rev_flag = 0;
       end
     end
 
     if ~isempty(RSI_path_rev)
-      integrated_rev_flag_rev = 1;
+      integrated_rev_flag_rev = 0;
       if isfield(dcminfo_rev, 'Private_0019_109c')
-        pulse_seq_name_rev = lower(dcminfo_rev.Private_0019_109c);
-        if ~isempty( strfind(pulse_seq_name_rev, 'pepolar') )
-          integrated_rev_flag_rev = 1;
-        elseif ~isempty(strfind(pulse_seq_name_rev, 'art')) || ~isempty(strfind(pulse_seq_name_rev, 'alt'))
-          integrated_rev_flag_rev = 0;
-        elseif strcmp(pulse_seq_name_rev, 'epi2')
-	  integrated_rev_flag_rev = 0;
+	pulse_seq_name_rev = lower(dcminfo_rev.Private_0019_109c);
+	if ~isempty( strfind(pulse_seq_name_rev, 'pepolar') )
+	  integrated_rev_flag_rev = 1;
 	end
       end
     end
