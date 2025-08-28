@@ -565,32 +565,32 @@ if T2_flag ~= 0
   fprintf('%s -- %s.m:    Saving T2 data...\n',datestr(now),mfilename);
   QD_ctx_save_mgh( volT2,  fullfile(output_path, 'T2_corrected_GUW.mgz') );
 
+  % Check for hip implant -------------------------------------------------
+  container_path_in = '/data_in/T2_corrected_GUW.mgz';
+  if strcmpi(params.ProstateSegContainer, 'docker')
+    cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
+  elseif strcmpi(params.ProstateSegContainer, 'singularity')
+    path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+    path_tmp = fullfile(output_path, 'tmp');
+    mkdir(path_tmp);
+    cmd = sprintf('singularity exec -B %s:/data_in -B %s:/app/tmp %s /app/miniconda3/bin/conda run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, path_tmp, path_sif, container_path_in);
+  end
+  disp(['Command: ' cmd]);
+  [status, cmdout] = system(cmd);
+  cmdout = split(cmdout);
+  match_notempty = find(~cellfun(@isempty, cmdout));
+  has_implant = str2double(cmdout{match_notempty});
+  if has_implant
+    disp('WARNING: Patient may have hip implant')
+  end
+  if exist('path_tmp', 'var')
+    rmdir(path_tmp, 's');
+  end
+
 else
 
   fprintf('%s -- %s.m:    Not using any T2 data...\n',datestr(now),mfilename);
 
-end
-
-% Check for hip implant -------------------------------------------------
-container_path_in = '/data_in/T2_corrected_GUW.mgz';
-if strcmpi(params.ProstateSegContainer, 'docker')
-  cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
-elseif strcmpi(params.ProstateSegContainer, 'singularity')
-  path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
-  path_tmp = fullfile(output_path, 'tmp');
-  mkdir(path_tmp);
-  cmd = sprintf('singularity exec -B %s:/data_in -B %s:/app/tmp %s /app/miniconda3/bin/conda run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, path_tmp, path_sif, container_path_in);
-end
-disp(['Command: ' cmd]);
-[status, cmdout] = system(cmd);
-cmdout = split(cmdout);
-match_notempty = find(~cellfun(@isempty, cmdout));
-has_implant = str2double(cmdout{match_notempty});
-if has_implant
-  disp('WARNING: Patient may have hip implant')
-end
-if exist('path_tmp', 'var')
-  rmdir(path_tmp, 's');
 end
 
 
