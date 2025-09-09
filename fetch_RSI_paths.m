@@ -61,7 +61,6 @@ patterns_Dixon_water = 'WATER:[\w\s-]*LAVA[\w\s-]*Flex';
 % -----------------------------------------------------------
 RSI_path_num = 1;
 T2_ax_path_num = 1;
-T2_sag_cube_path_num = 1;
 DWI_conventional_path_num = 1;
 ADC_conventional_path_num = 1;
 DCE_path_num = 1;
@@ -220,7 +219,7 @@ paths.RSI_rev = cell(size(paths.RSI));
 for i = 1:length(paths.RSI)
 
   series1 = series_description_list{i};
-  pattern_rev = sprintf('%s.*rev', series1);
+  pattern_rev = sprintf('%s_*\\s*rev', series1);
 
   for j = 1:length(paths.RSI)
 
