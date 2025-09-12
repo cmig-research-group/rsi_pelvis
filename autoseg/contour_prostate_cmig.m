@@ -1,5 +1,10 @@
 function [prostate_mask, prostate_detector_output] = contour_prostate_cmig(path_to_axT2_mgz, container)
 
+% Unset LD_PRELOAD environment variable for system calls to singularity
+% Otherwise need to parse glibc warnings
+orig_LD_PRELOAD = getenv('LD_PRELOAD');
+setenv('LD_PRELOAD', '');
+
 [filepath, name, ext] = fileparts(path_to_axT2_mgz);
 path_input = fullfile(filepath, 'seg');
 path_output = filepath;
@@ -94,5 +99,8 @@ else
 end
 
 delete(fullfile(filepath, 'prostate_900.nii.gz'));
+
+% Return LD_PRELOAD to its original value
+setenv('LD_PRELOAD', orig_LD_PRELOAD);
 
 end
