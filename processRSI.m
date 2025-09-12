@@ -573,7 +573,7 @@ if T2_flag ~= 0
     path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
     path_tmp = fullfile(output_path, 'tmp');
     mkdir(path_tmp);
-    cmd = sprintf('singularity exec -B %s:/data_in -B %s:/app/tmp %s /app/miniconda3/bin/conda run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, path_tmp, path_sif, container_path_in);
+    cmd = sprintf('singularity exec -B %s:/data_in -B %s:/app/tmp %s python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, path_tmp, path_sif, container_path_in);
   end
   disp(['Command: ' cmd]);
   [status, cmdout] = system(cmd);
@@ -686,7 +686,7 @@ if (params.ProstateSeg == 1) && (T2_flag ~= 0)
   cmd = sprintf('find %s -name "prostate_contour_T2_space.mgz"', path_date);
   [~, cmdout] = system(cmd);
   if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying prostate contour from another RSI series...\n',datestr(now),mfilename);
+    fprintf('%s -- %s.m:    Copying prostate contour from another series...\n',datestr(now),mfilename);
     cmdout = split(cmdout);
     match_contour = find(~cellfun(@isempty, cmdout));
     path_contour = cmdout{match_contour};
@@ -736,7 +736,7 @@ if (params.UrethraSeg == 1) && (T2_flag ~= 0)
   cmd = sprintf('find %s -name "urethra_contour_T2_space.mgz"', path_date);
   [~, cmdout] = system(cmd);
   if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying urethra contour from another RSI series...\n',datestr(now),mfilename);
+    fprintf('%s -- %s.m:    Copying urethra contour from another series...\n',datestr(now),mfilename);
     cmdout = split(cmdout);
     match_contour = find(~cellfun(@isempty, cmdout));
     path_contour = cmdout{match_contour};
@@ -747,6 +747,7 @@ if (params.UrethraSeg == 1) && (T2_flag ~= 0)
 
   if contour_exists == 0
 
+    fprintf('%s -- %s.m:    Segmenting urethra from T2 volume using CMIG software...\n',datestr(now),mfilename);
     contour_urethra = contour_urethra_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.UrethraSegContainer );
 
     if isempty(contour_urethra)
