@@ -3,15 +3,20 @@ function ctx_report = create_visual_report(ctx_T2, ctx_mask_prostate, ctx_RSIrs,
 % Create overlay on which to print the report ----------------------------------------
 if ~isempty(ctx_RSIrs)
 
-  vol_prostate_contour = zeros(size(ctx_mask_prostate.imgs));
-  for i = 1:size(vol_prostate_contour,3)
-    vol_prostate_contour(:,:,i) = double(bwperim(logical(ctx_mask_prostate.imgs(:,:,i)), 8));
+  if ~isempty(ctx_mask_prostate)
+    vol_prostate_contour = zeros(size(ctx_mask_prostate.imgs));
+    for i = 1:size(vol_prostate_contour,3)
+      vol_prostate_contour(:,:,i) = double(bwperim(logical(ctx_mask_prostate.imgs(:,:,i)), 8));
+    end
+    ctx_prostate_contour = ctx_mask_prostate;
+    ctx_prostate_contour.imgs = vol_prostate_contour;
+    ctx_overlay = create_color_overlay(ctx_prostate_contour, ctx_T2, [2 3], 'cool', ctx_prostate_contour, [], 1);
+  else
+    ctx_overlay = ctx_T2;
   end
-  ctx_prostate_contour = ctx_mask_prostate;
-  ctx_prostate_contour.imgs = vol_prostate_contour;
-  ctx_overlay = create_color_overlay(ctx_prostate_contour, ctx_T2, [2 3], 'cool', ctx_prostate_contour, [], 1);
 
-  for j = 1:size(ctx_lesions.imgs,4)
+  if ~isempty(ctx_lesions)
+    for j = 1:size(ctx_lesions.imgs,4)
       vol_lesion_contour = zeros(size(ctx_mask_prostate.imgs));
       for i = 1:size(vol_lesion_contour,3)
 	vol_lesion_contour(:,:,i) = double(bwperim(logical(ctx_lesions.imgs(:,:,i,j)), 8));
@@ -19,6 +24,7 @@ if ~isempty(ctx_RSIrs)
       ctx_lesion_contour = ctx_mask_prostate;
       ctx_lesion_contour.imgs = vol_lesion_contour;
       ctx_overlay = create_color_overlay(ctx_lesion_contour, ctx_overlay, [0 0.5], 'cool', ctx_lesion_contour, [], 1);
+    end
   end
 
   ctx_overlay = create_color_overlay(ctx_RSIrs, ctx_overlay, [80 180]);
