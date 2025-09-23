@@ -99,6 +99,7 @@ else
 end
 
 delete(fullfile(filepath, 'prostate_900.nii.gz'));
+delete(fullfile(filepath, '*.json'));
 
 % Return LD_PRELOAD to its original value
 setenv('LD_PRELOAD', orig_LD_PRELOAD);

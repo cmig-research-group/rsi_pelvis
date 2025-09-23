@@ -67,5 +67,6 @@ else
 end
 
 delete(fullfile(filepath, 'prostate_900.nii.gz'));
+delete(fullfile(filepath, '*.json'));
 
 end
