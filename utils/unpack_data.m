@@ -31,7 +31,8 @@ end
 
 function subject_info = generate_cmds(data_dir, sorted_dir, fname_sh, subject_info, sort_variable)
 
-exclude = {'.', '..', '.DS_Store'};
+exclude_exact = {'.', '..', '.DS_Store'};
+exclude_regexp = 'XX_'; % Ignore Philips metadata files for now  
 contents = dir(data_dir);
 
 if ~exist(sorted_dir, 'dir')
@@ -43,7 +44,9 @@ fID = fopen(fname_sh, 'a');
 disp(['Sorting ' data_dir]);
 for i = 1:length(contents)
 
-  if any(strcmp(contents(i).name, exclude))
+  match_exclude_exact = any(strcmp(contents(i).name, exclude_exact));
+  match_exclude_regexp = ~isempty(regexp(contents(i).name, exclude_regexp));
+  if match_exclude_exact | match_exclude_regexp
     continue
   end
 

@@ -101,26 +101,28 @@ for i = 1:length(acqs)
       manufacturer = 'philips';
     end
 
-    if strcmp(manufacturer, 'ge')
-      if ~isfield(info,'Private_0019_109c')
-	info.Private_0019_109c = '';
-      end
-      seq_name = info.Private_0019_109c;
+    seq_name = '';
+    switch manufacturer
+      case 'ge'
+	if isfield(info, 'Private_0019_109c')
+	  seq_name = info.Private_0019_109c;
+	end
 
-    elseif strcmp(manufacturer, 'siemens')
-      if ~isfield(info,'SequenceName')
-	info.SequenceName = '';
-      end
-      seq_name = info.SequenceName;
+      case 'siemens'
+	if isfield(info, 'SequenceName')
+	  seq_name = info.SequenceName;
+	end
 
-    elseif strcmp(manufacturer, 'philips')
-      if ~isfield(info,'MRSeriesScanningTechniqueDesc')
-        info.MRSeriesScanningTechniqueDesc = '';
-      end
-      seq_name = info.MRSeriesScanningTechniqueDesc;
+      case 'philips'
+	if isfield(info, 'MRSeriesScanningTechniqueDesc')
+	  seq_name = info.MRSeriesScanningTechniqueDesc;
+	end
+
+      otherwise
+	seq_name = '';
     end
 
-    % Check for RSI data
+    % Check for RSI data -----------------------------------------------------
     if strcmp(manufacturer, 'ge')
       match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, seqID_RSI_GE)));
       match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
