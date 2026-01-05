@@ -36,7 +36,7 @@ params.ProstateSegContainer = 'Singularity';
     % If on the CMIG network, set the container to 'Singularity'
     % If you have and want to use the Docker/Podman container, set the container to 'Docker' 
 params.UrethraSeg = 1;
-params.UrethraSegContainer = 'Docker';
+params.UrethraSegContainer = 'Singularity';
 
 % DICOM outputs
 params.WriteDICOMS = 1;
@@ -46,11 +46,11 @@ params.WriteDICOMS = 1;
   params.SelectDICOMS.ADC = 1;
   params.SelectDICOMS.RSICmaps = 0;
   params.SelectDICOMS.RSIrs = 1;
-  params.SelectDICOMS.RSIrsReportOverlay = 1;
-  params.SelectDICOMS.ProstateAutoSeg_RT = 1;
+  params.SelectDICOMS.RSIrsReportOverlay = 0;
+  params.SelectDICOMS.ProstateAutoSeg_RT = 0;
   params.SelectDICOMS.ProstateAutoSeg_SEG = 1;
   params.SelectDICOMS.UrethraAutoSeg_RT = 1;
-  params.SelectDICOMS.LesionAutoSeg_RT = 1;
+  params.SelectDICOMS.LesionAutoSeg_RT = 0;
   params.SelectDICOMS.LesionAutoSeg_SEG = 1;
 
 % Python vitrual environment (only necessary to generate DICOM SEG contours)
