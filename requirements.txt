@@ -1,0 +1,15 @@
+attrs
+highdicom
+importlib-metadata
+jsonschema
+numpy
+Pillow
+pillow-jpls
+pydicom
+pydicom-seg
+pyrsistent
+scipy
+SimpleITK
+six
+typing_extensions
+zipp
