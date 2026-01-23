@@ -22,8 +22,8 @@ paths.Dixon_water = {''};
 global_exclude = {'.', '..', '.DS_Store'};
 
 % RSI general
-patterns_RSI = {'RSI', 'b0b100b800b1400b2500'};
-patterns_exclude_RSI = {'trace', 'adc', 'color', 'fa', 'tensor'};
+patterns_RSI = {'RSI'};
+patterns_exclude_RSI = {'trace', 'adc', 'color', 'fa', 'tensor', '[\s_]+T2[\s_]+', 'NOT.FOR.CLINICAL.USE', 'Apparent.Diffusion.Coefficient', 'Restricted.Signal.Map'};
 
 % RSI GE 
 seqID_RSI_GE = {'epi2_pepolarFOCUSFLEX', 'epi2_pepolarFLEX', 'epi2_ART', 'epi2_revART', 'epi2alt', 'epi2altoff'};
@@ -93,11 +93,11 @@ for i = 1:length(acqs)
     
     % Sort out vendor-specific stuff -----------------------------------------------
     manufacturer = info.Manufacturer;
-    if strcmpi(manufacturer, 'ge medical systems')
+    if ~isempty(regexpi(manufacturer, 'ge'))
       manufacturer = 'ge';
-    elseif any(strcmpi(manufacturer, {'siemens', 'siemens healthineers'}))
+    elseif ~isempty(regexpi(manufacturer, 'siemens'))
       manufacturer = 'siemens';
-    elseif any(strcmpi(manufacturer, {'philips', 'philips healthcare'}))
+    elseif ~isempty(regexpi(manufacturer, 'philips'))
       manufacturer = 'philips';
     end
 
@@ -114,7 +114,9 @@ for i = 1:length(acqs)
 	end
 
       case 'philips'
-	if isfield(info, 'MRSeriesScanningTechniqueDesc')
+	if isfield(info, 'PulseSequenceName')
+	  seq_name = info.PulseSequenceName;
+	elseif isfield(info, 'MRSeriesScanningTechniqueDesc')
 	  seq_name = info.MRSeriesScanningTechniqueDesc;
 	end
 
@@ -135,8 +137,9 @@ for i = 1:length(acqs)
     end
     if strcmp(manufacturer, 'siemens')
       match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, patterns_seqID_RSI_Siemens)));
+      match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
       match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_RSI)));
-      if match_RSI_seq && ~match_exclude
+      if (match_RSI_seq || match_RSI_name) && ~match_exclude
 	paths.RSI{RSI_path_num} = acq_path;
 	series_description_list{RSI_path_num} = SeriesDescription; % Save for later filtering of reverse acquisitions
 	RSI_path_num = RSI_path_num + 1;
@@ -146,7 +149,7 @@ for i = 1:length(acqs)
       match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, patterns_seqID_RSI_philips)));
       match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
       match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_RSI)));
-      if (match_RSI_seq && match_RSI_name) && ~match_exclude
+      if (match_RSI_seq || match_RSI_name) && ~match_exclude
 	paths.RSI{RSI_path_num} = acq_path;
 	series_description_list{RSI_path_num} = SeriesDescription; % Save for later filtering of reverse acquisitions
 	RSI_path_num = RSI_path_num + 1;

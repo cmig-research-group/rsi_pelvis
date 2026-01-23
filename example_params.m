@@ -36,7 +36,7 @@ params.ProstateSegContainer = 'Singularity';
     % If on the CMIG network, set the container to 'Singularity'
     % If you have and want to use the Docker/Podman container, set the container to 'Docker' 
 params.UrethraSeg = 1;
-params.UrethraSegContainer = 'Docker';
+params.UrethraSegContainer = 'Singularity';
 
 % DICOM outputs
 params.WriteDICOMS = 1;
@@ -53,9 +53,6 @@ params.WriteDICOMS = 1;
   params.SelectDICOMS.LesionAutoSeg_RT = 1;
   params.SelectDICOMS.LesionAutoSeg_SEG = 1;
 
-% Python vitrual environment (only necessary to generate DICOM SEG contours)
-params.PythonVEnv = '/home/ccconlin/Working/pirads_app/venv_pirads';
-
 % QC
 params.DebugFlag = 0;
 params.CheckProtocolCompliance = 1;
@@ -63,3 +60,8 @@ params.ProtocolReference = 'artpro_protocol_reference.mat';
 
 % Save non-RSI series as mgz files 
 params.WriteOptionalSeries = 1;
+
+
+%% Host machine configuration -------------------------------------------------
+% Path to python virtual environment (only necessary to generate DICOM SEG contours)
+params.PythonVEnv = '/home/ccconlin/Working/pirads_app/venv_pirads';

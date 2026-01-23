@@ -1,4 +1,4 @@
-function urethra_mask = contour_urethra_cmig(path_to_axT2_mgz, container)
+function urethra_mask = contour_urethra_cmig(path_to_axT2_mgz, container, params)
 
 [filepath, name, ~] = fileparts(path_to_axT2_mgz);
 path_input = fullfile(filepath, 'seg');
@@ -9,24 +9,15 @@ fname_nifti = fullfile(path_input, 'prostate_900_0000.nii.gz');
 ctx_t2 = QD_ctx_load_mgh(path_to_axT2_mgz);
 ctx_save_nifti(ctx_t2, fname_nifti)
 
-if ~isdeployed
+if strcmpi(container, 'docker')
+     cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=/data_in --mount type=bind,src=%s,dst=/data_out --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output);
 
-  if strcmpi(container, 'docker')
-    cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in -v %s:/data_out --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output);
-  elseif strcmpi(container, 'singularity')
-    path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
-    cmd = sprintf('singularity exec -B %s:/data_in -B %s:/data_out %s /app/miniconda3/bin/conda run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output, path_sif);
-  end
-  disp(['Command: ' cmd]);
-  system(cmd);
-
-else
-
-  cmd = ['sudo ' which('call_docker_urethra.sh') ' '  '''' path_input ''''  ' ' '''' path_output ''''];
-  disp(['Command: ' cmd]);
-  system(cmd);
-
+elseif strcmpi(container, 'singularity')
+  path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+  cmd = sprintf('singularity exec -B %s:/data_in -B %s:/data_out %s /app/miniconda3/bin/conda run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output, path_sif);
 end
+disp(['Command: ' cmd]);
+system(cmd);
 
 rmdir(path_input, 's');
 if exist('path_tmp', 'var')

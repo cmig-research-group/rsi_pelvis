@@ -135,7 +135,7 @@ for i = 1:length(contents)
     fprintf(fID, 'mv ''%s'' ''%s%c%s''\n', item, series_dir, filesep, contents(i).name);
     
   catch ME
-    disp(ME.message);
+    fprintf('%s: %s\n', ME.message, item);
   end
 
 end

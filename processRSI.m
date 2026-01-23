@@ -19,18 +19,6 @@ function processRSI(RSI_path, RSI_path_rev, T2_path, DCE_path, output_path, para
 %           Type: MATLAB struct
 
 
-% Unset LD_PRELOAD environment variable for system calls to singularity
-% Otherwise need to parse glibc warnings
-orig_LD_PRELOAD = getenv('LD_PRELOAD');
-setenv('LD_PRELOAD', '');
-
-
-%% ============== Parse Inputs ============== %%
-% Make output directory
-if ~exist(output_path,'dir')
-    mkdir(output_path);
-end
-
 % Check if T2 needs to be ignored
 if ~isempty(T2_path)
   T2_flag = 1;
@@ -38,50 +26,19 @@ else
   T2_flag = 0;
 end
 
-% Swap fwd and rev scans, if applicable, s.t. the fwd scan stretches the anatomy (hopefully)
-if ~isempty(RSI_path_rev)
-  if length(dir(RSI_path)) == length(dir(RSI_path_rev))
-    file_fwd = dir(RSI_path);
-    file_fwd = fullfile(file_fwd(3).folder, file_fwd(3).name);
-    info_fwd = dicominfo(file_fwd);
-    Manufacturer = info_fwd.Manufacturer;
-
-    if strcmpi(info_fwd.Manufacturer, 'ge medical systems')
-      seq_name_fwd = info_fwd.Private_0019_109c;
-      tmp_path1 = RSI_path;
-      tmp_path2 = RSI_path_rev;
-      if any(strcmp(seq_name_fwd, {'epi2alt', 'epi2_ART', 'epi2_pepolarFOCUSFLEX', 'epi2_pepolarFLEX'}))
-	RSI_path = tmp_path2;
-	RSI_path_rev = tmp_path1;
-      end
-    end
-
-  end
-end
-
-
-%% ============== load RSI Data ============== %%
 % check dicom data
-impax_flag = 0;
+ims = dir(RSI_path);
+fname_ref = fullfile(ims(3).folder, ims(3).name);
+dcminfo = dicominfo(fname_ref);
+dcminfo = fix_impax_dcm_tags(dcminfo);
 
-fprintf('%s -- %s.m:    Loading RSI data...\n',datestr(now),mfilename);
-if iscell(RSI_path)
-    flist = RSI_path;
-else
-    flist = recursive_dir(RSI_path);
-end
-for i = 1:length(flist)
-    try
-        dcminfo = dicominfo(flist{i}); 
-	dcminfo = fix_impax_dcm_tags(dcminfo);
-	break
-    catch
-        continue
-    end
-end
-
-if ~exist('dcminfo','var')
-    error('No RSI DICOMs found.'); 
+manufacturer = dcminfo.Manufacturer;
+if ~isempty(regexpi(manufacturer, 'ge'))
+  manufacturer = 'ge';
+elseif ~isempty(regexpi(manufacturer, 'siemens'))
+  manufacturer = 'siemens';
+elseif ~isempty(regexpi(manufacturer, 'philips'))
+  manufacturer = 'philips';
 end
 
 % Check for enhanced DICOMs
@@ -91,13 +48,17 @@ if isfield(dcminfo, 'PerFrameFunctionalGroupsSequence')
 end
 
 % Collect some DICOM header info
-Manufacturer = dcminfo.Manufacturer;
-ModelName = dcminfo.ManufacturerModelName;
 if enhanced_flag
   InPlanePhaseEncodingDirection = dcminfo.SharedFunctionalGroupsSequence.Item_1.MRFOVGeometrySequence.Item_1.InPlanePhaseEncodingDirection;
   TE = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.MREchoSequence.Item_1.EffectiveEchoTime;
   TR = dcminfo.SharedFunctionalGroupsSequence.Item_1.MRTimingAndRelatedParametersSequence.Item_1.RepetitionTime;
-  AcquisitionMatrix = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+  if isfield(dcminfo, 'MRAcquisitionFrequencyEncodingSteps') && isfield(dcminfo, 'MRAcquisitionPhaseEncodingStepsInPlane')
+    AcquisitionMatrix = [double(dcminfo.MRAcquisitionFrequencyEncodingSteps) double(dcminfo.MRAcquisitionPhaseEncodingStepsInPlane)]';
+  elseif isfield(dcminfo.PerFrameFunctionalGroupsSequence.Item_1, 'Private_2005_140f')
+    AcquisitionMatrix = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+  else
+    AcquisitionMatrix = [];
+  end
   PixelSpacing = dcminfo.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
 else
   InPlanePhaseEncodingDirection = dcminfo.InPlanePhaseEncodingDirection;
@@ -112,31 +73,62 @@ else
 end
 
 % Read vendor-specific tag labels
-if strcmpi(Manufacturer, 'ge medical systems')
+if strcmp(manufacturer, 'ge')
    disp('Reading GE vendor tags');
    dicomdict('set', 'gems-dicom-dict.txt');
-   dcminfo_GE = dicominfo(flist{i});
+   dcminfo_GE = dicominfo(fname_ref);
    if T2_flag
-     flist_T2 = recursive_dir(T2_path);
-     dcminfo_T2_GE = dicominfo(flist_T2{i});
+     ims_T2 = dir(T2_path);
+     fname_ref_T2 = fullfile(ims_T2(3).folder, ims_T2(3).name);
+     dcminfo_T2_GE = dicominfo(fname_ref_T2);
    end
    if ~isempty(RSI_path_rev)
-     flist_rev = recursive_dir(RSI_path_rev);
-     dcminfo_rev_GE = dicominfo(flist_rev{i});
+     ims_rev = dir(RSI_path_rev);
+     fname_ref_rev = fullfile(ims_rev(3).folder, ims_rev(3).name);
+     dcminfo_rev_GE = dicominfo(fname_ref_rev);
    end
    dicomdict('factory');
 end
 
+impax_flag = 0;
 if isfield(dcminfo, 'Private_0043_1039') == 1 && strcmp(class(dcminfo.Private_0043_1039),'char') == 1
    impax_flag = 1;
    params.EddyCorrFlag = 0;
    params.MotionCorrFlag = 0;
 end
 
+% Swap fwd and rev scans, if applicable, s.t. the fwd scan stretches the anatomy (hopefully)
+if ~isempty(RSI_path_rev)
+  if length(dir(RSI_path)) == length(dir(RSI_path_rev))
+    file_fwd = dir(RSI_path);
+    file_fwd = fullfile(file_fwd(3).folder, file_fwd(3).name);
+    info_fwd = dicominfo(file_fwd);
+
+    if strcmp(manufacturer, 'ge')
+      seq_name_fwd = info_fwd.Private_0019_109c;
+      tmp_path1 = RSI_path;
+      tmp_path2 = RSI_path_rev;
+      if any(strcmp(seq_name_fwd, {'epi2alt', 'epi2_ART', 'epi2_pepolarFOCUSFLEX', 'epi2_pepolarFLEX'}))
+	RSI_path = tmp_path2;
+	RSI_path_rev = tmp_path1;
+      end
+    end
+
+  end
+end
+
+% Make output directory
+if ~exist(output_path,'dir')
+  mkdir(output_path);
+end
+
+
+%% ============== load RSI Data ============== %%
 isARTPro = 0;
-switch lower(Manufacturer)
+
+switch manufacturer
        
-  case 'ge medical systems' % GE --------------------------------------------------------------------
+  case 'ge' % GE -------------------------------------------------------------------------------------
 
     % Check if data is FOCUS or not
     isFOCUS = 0;
@@ -255,7 +247,7 @@ switch lower(Manufacturer)
     end
     
 
-  case {'siemens', 'siemens healthineers'}  % Siemens --------------------------------------------------------------------
+  case 'siemens'  % Siemens -------------------------------------------------------------------------------------------
 
     isFOCUS = 0;
     if ~isempty(regexpi(dcminfo.SeriesDescription, 'ZOOMit'))
@@ -280,7 +272,7 @@ switch lower(Manufacturer)
     end
 
 
-  case {'philips', 'philips healthcare'}  % Philips --------------------------------------------------------------------
+  case 'philips'  % Philips -------------------------------------------------------------------------------------------------
 
     isFOCUS = 0;
     if ~isempty(regexpi(dcminfo.SeriesDescription, 'ZOOM'))
@@ -315,7 +307,7 @@ end
 
 % Save unprocessed DWI data
 fprintf('%s -- %s.m:    Saving unprocessed DWI data...\n', datestr(now), mfilename);
-if strcmpi(Manufacturer, 'ge medical systems')
+if strcmp(manufacturer, 'ge')
    disp('Saving GE vendor tags');
    dcminfo_tmp = dcminfo;
    dcminfo = dcminfo_GE;
@@ -355,7 +347,7 @@ if strcmp(InPlanePhaseEncodingDirection, 'ROW')
   params.B0DISCO = 0;
 end
 
-if strcmpi(Manufacturer,'ge medical systems')
+if strcmp(manufacturer, 'ge')
 
   % Flip "reverse" volumes (which are now the "forward" volumes)
   if exist('rsidat_rev', 'var') && (integrated_rev_flag==1)
@@ -459,11 +451,12 @@ end
 
 
 % Display RSI protocol parameters
+model_name = dcminfo.ManufacturerModelName;
 nFrames = length(bvals);
 
 fprintf('\n\n');
 fprintf('Protocol Parameters:\n');
-fprintf('\t Scanner Model: %s - %s\n',Manufacturer,ModelName);
+fprintf('\t Scanner Model: %s - %s\n',manufacturer,model_name);
 fprintf('\t EchoTime: %.1f ms\n',TE);
 fprintf('\t RepetitionTime: %.1f ms\n',TR);
 fprintf('\t Number of frames: %d \n',nFrames);
@@ -472,7 +465,7 @@ fprintf('\n\n');
 
 if exist('bvals_rev', 'var')
    fprintf('Protocol Parameters (reverse PE polarity):\n');
-   fprintf('\t Scanner Model: %s - %s\n',Manufacturer,ModelName);
+   fprintf('\t Scanner Model: %s - %s\n',manufacturer,model_name);
    fprintf('\t EchoTime: %.1f ms\n',TE);
    fprintf('\t RepetitionTime: %.1f ms\n',TR);
    fprintf('\t Number of frames: %d \n', length(bvals_rev));
@@ -480,6 +473,8 @@ if exist('bvals_rev', 'var')
    fprintf('\n\n');
 end
 
+
+% Check if forward and reverse volumes are compatible
 [rows, cols, slices, ~] = size(rsidat);
 if ~isempty(AcquisitionMatrix)
   matrix = double(AcquisitionMatrix);
@@ -493,7 +488,13 @@ real_vxl_size_row = FOV_row./matrix(1);
 if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
 
   if enhanced_flag
-    AcquisitionMatrix_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+    if isfield(dcminfo_rev, 'MRAcquisitionFrequencyEncodingSteps') && isfield(dcminfo_rev, 'MRAcquisitionPhaseEncodingStepsInPlane')
+      AcquisitionMatrix_rev = [double(dcminfo_rev.MRAcquisitionFrequencyEncodingSteps) double(dcminfo_rev.MRAcquisitionPhaseEncodingStepsInPlane)]';
+    elseif isfield(dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1, 'Private_2005_140f')
+      AcquisitionMatrix_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+    else
+      AcquisitionMatrix_rev = [];
+    end
     PixelSpacing_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
   else
     if isfield(dcminfo_rev, 'AcquisitionMatrix')
@@ -516,8 +517,6 @@ if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
 
 end
 
-
-% Check if forward and reverse volumes are compatible
 flag_compute_avgs = 1;
 if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
 
@@ -543,9 +542,54 @@ if T2_flag ~= 0
   fprintf('%s -- %s.m:    Loading T2 data...\n',datestr(now),mfilename);
   fprintf('T2 series: %s\n', T2_path);
 
-  [volT2, dcminfo_T2] = QD_read_dicomdir(T2_path);
-  [gwarpInfoT2, ~] = mmil_get_gradwarpinfo(dcminfo_T2(1));
-  dcminfo_T2 = dcminfo_T2(1);
+  params_T2 = params;
+
+  % Check if prostate has already been contoured for another RSI series
+  already_contoured = 0;
+  path_date = fullfile(output_path, '../');
+  cmd = sprintf('find %s -name "prostate_contour_T2_space.mgz"', path_date);
+  [~, cmdout] = system(cmd);
+  if ~isempty(cmdout)
+    fprintf('%s -- %s.m:    Copying prostate contour from another series...\n',datestr(now),mfilename);
+    cmdout = split(cmdout);
+    match_contour = find(~cellfun(@isempty, cmdout));
+    path_contour = cmdout{match_contour};
+    copyfile(path_contour, output_path);
+    contour_prostate = QD_ctx_load_mgh(fullfile(output_path, 'prostate_contour_T2_space.mgz'));
+    contour_prostate_dwi_space = vol_resample(contour_prostate, b0_vol_fwd, eye(4));
+    QD_ctx_save_mgh( contour_prostate_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+    params_T2.ProstateSeg = 0;
+    already_contoured = 1;
+  end
+
+  % Check if urethra has already been contoured for another RSI series
+  cmd = sprintf('find %s -name "urethra_contour_T2_space.mgz"', path_date);
+  [~, cmdout] = system(cmd);
+  if ~isempty(cmdout)
+    fprintf('%s -- %s.m:    Copying urethra contour from another series...\n',datestr(now),mfilename);
+    cmdout = split(cmdout);
+    match_contour = find(~cellfun(@isempty, cmdout));
+    path_contour = cmdout{match_contour};
+    copyfile(path_contour, output_path);
+    contour_urethra = QD_ctx_load_mgh(fullfile(output_path, 'urethra_contour_T2_space.mgz'));
+    params_T2.UrethraSeg = 0;
+  end
+
+  params_T2.WriteDICOMS = 0;
+  [volT2, dcminfo_T2, has_implant, prostate_detector_output, tmp_contour_prostate, tmp_contour_urethra] = process_T2(T2_path, output_path, params_T2);
+  if ~already_contoured
+     contour_prostate = tmp_contour_prostate;
+     prostate_detector_output = 1;
+     contour_urethra = tmp_contour_urethra;
+     clear tmp_contour_prostate tmp_contour_urethra;
+  end
+
+  if ~isempty(contour_prostate)
+    fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
+    contour_prostate_dwi_space = vol_resample(contour_prostate, b0_vol_fwd, eye(4));
+    QD_ctx_save_mgh( contour_prostate_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+  end
+
   [rows_T2, cols_T2, slices_T2, ~] = size(volT2.imgs);
   if enhanced_flag
     PixelSpacing_T2 = dcminfo_T2.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
@@ -553,39 +597,6 @@ if T2_flag ~= 0
     PixelSpacing_T2 = dcminfo_T2.PixelSpacing;
   end
   FOV_row_T2 = rows_T2*PixelSpacing_T2(2);
-
-  % Unwarp T2
-  fprintf('%s -- %s.m:    Unwarping T2...\n',datestr(now),mfilename);
-  if params.GradWarpFlag && isfield(gwarpInfoT2, 'gwtype') && isfield(gwarpInfoT2, 'unwarpflag') && isfield(gwarpInfoT2, 'isoctrflag')
-    volT2 = ctx_unwarp_grad(volT2, gwarpInfoT2.gwtype, gwarpInfoT2.unwarpflag, gwarpInfoT2.isoctrflag);
-  else
-    fprintf('WARNING: T2 gradwarp correction disabled\n');
-  end
-
-  fprintf('%s -- %s.m:    Saving T2 data...\n',datestr(now),mfilename);
-  QD_ctx_save_mgh( volT2,  fullfile(output_path, 'T2_corrected_GUW.mgz') );
-
-  % Check for hip implant -------------------------------------------------
-  container_path_in = '/data_in/T2_corrected_GUW.mgz';
-  if strcmpi(params.ProstateSegContainer, 'docker')
-    cmd = sprintf('sudo docker run --ipc="host" -v %s:/data_in --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, container_path_in);
-  elseif strcmpi(params.ProstateSegContainer, 'singularity')
-    path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
-    path_tmp = fullfile(output_path, 'tmp');
-    mkdir(path_tmp);
-    cmd = sprintf('singularity exec -B %s:/data_in -B %s:/app/tmp %s python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', output_path, path_tmp, path_sif, container_path_in);
-  end
-  disp(['Command: ' cmd]);
-  [status, cmdout] = system(cmd);
-  cmdout = split(cmdout);
-  match_notempty = find(~cellfun(@isempty, cmdout));
-  has_implant = str2double(cmdout{match_notempty});
-  if has_implant
-    disp('WARNING: Patient may have hip implant')
-  end
-  if exist('path_tmp', 'var')
-    rmdir(path_tmp, 's');
-  end
 
 else
 
@@ -677,91 +688,6 @@ volb0.imgs(find(isnan(volb0.imgs))) = 0;
 volb0.imgs(find(isinf(volb0.imgs))) = 0;
 
 
-% Segment prostate from T2 volume -----------------------------------------
-if (params.ProstateSeg == 1) && (T2_flag ~= 0)
-
-  % Check if prostate has already been contoured for another RSI series
-  contour_exists = 0;
-  path_date = fullfile(output_path, '../');
-  cmd = sprintf('find %s -name "prostate_contour_T2_space.mgz"', path_date);
-  [~, cmdout] = system(cmd);
-  if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying prostate contour from another series...\n',datestr(now),mfilename);
-    cmdout = split(cmdout);
-    match_contour = find(~cellfun(@isempty, cmdout));
-    path_contour = cmdout{match_contour};
-    copyfile(path_contour, output_path);
-    contour = QD_ctx_load_mgh(fullfile(output_path, 'prostate_contour_T2_space.mgz'));
-    target = QD_ctx_load_mgh(fname_corr);
-    contour_dwi_space = vol_resample(contour, target, eye(4));
-    QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
-    contour_exists = 1;
-    prostate_detector_output = 1;
-  end
-
-  if contour_exists == 0
-
-    if strcmpi(params.ProstateSegVendor, 'cmig')
-      fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
-      [contour, prostate_detector_output] = contour_prostate_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
-
-    elseif strcmpi(params.ProstateSegVendor, 'cortechs')
-      fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CorTechs'' software...\n',datestr(now),mfilename);
-      [contour, prostate_detector_output] = contour_prostate_cortechs( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
-
-    else
-      error('Prostate segmentation was enabled, but ProstateSegVendor parameter was not recognized');
-    end
-
-    if ~isempty(contour)
-      cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'prostate_contour_T2_space.mgz')];
-      system(cmd);
-      fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
-      target = QD_ctx_load_mgh(fname_corr);
-      contour_dwi_space = vol_resample(contour, target, eye(4));
-      QD_ctx_save_mgh( contour_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
-    end
-
-  end
-
-end
-
-
-% Segment urethra from T2 volume -----------------------------------------
-if (params.UrethraSeg == 1) && (T2_flag ~= 0)
-
-  % Check if urethra has already been contoured for another RSI series
-  contour_exists = 0;
-  path_date = fullfile(output_path, '../');
-  cmd = sprintf('find %s -name "urethra_contour_T2_space.mgz"', path_date);
-  [~, cmdout] = system(cmd);
-  if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying urethra contour from another series...\n',datestr(now),mfilename);
-    cmdout = split(cmdout);
-    match_contour = find(~cellfun(@isempty, cmdout));
-    path_contour = cmdout{match_contour};
-    copyfile(path_contour, output_path);
-    contour_urethra = QD_ctx_load_mgh(fullfile(output_path, 'urethra_contour_T2_space.mgz'));
-    contour_exists = 1;
-  end
-
-  if contour_exists == 0
-
-    fprintf('%s -- %s.m:    Segmenting urethra from T2 volume using CMIG software...\n',datestr(now),mfilename);
-    contour_urethra = contour_urethra_cmig( fullfile(output_path, 'T2_corrected_GUW.mgz'), params.UrethraSegContainer );
-
-    if isempty(contour_urethra)
-      params.UrethraSeg = 0;
-    else
-      cmd = ['mv ' fullfile(output_path,'T2_corrected_GUW_seg.mgz') ' ' fullfile(output_path,'urethra_contour_T2_space.mgz')];
-      system(cmd);
-    end
-
-  end
-
-end
-
-
 % Compute average DWI volume and save it -----------------------------------
 DWI_vol_averaged = zeros( size(rsidat,1), size(rsidat,2), size(rsidat,3), length(ubvals) );
 for b = 1:length(ubvals)
@@ -782,7 +708,7 @@ if exist('rsidat_rev', 'var')
 end
 
 
-% Compute conventional ADC from average DWI volume w/out noise correction --
+% Compute conventional ADC from average DWI volume w/out noise correction -----
 bvals_for_ADC = ubvals <= 1000;
 conv_ADC_vol = compute_ADCs( DWI_vol_averaged(:,:,:,bvals_for_ADC), ubvals(bvals_for_ADC) );
 fprintf('%s -- %s.m:    Saving conventional ADC maps...\n', datestr(now), mfilename);
@@ -793,55 +719,6 @@ if exist('DWI_vol_averaged_rev', 'var') && (numel(ubvals_rev)>=2)
    conv_ADC_vol_rev = compute_ADCs( DWI_vol_averaged_rev(:,:,:,bvals_for_ADC_rev), ubvals_rev(bvals_for_ADC_rev) );
    fprintf('%s -- %s.m:    Saving conventional ADC maps...\n', datestr(now), mfilename);
    QD_save_mgh( conv_ADC_vol_rev, fullfile(output_path,'REV_conventional_ADC_map.mgz'), M_rev );
-end
-
-
-% Fit RSI model to data without noise correction ------------------------------
-fprintf('%s -- %s.m:    Fitting RSI model to data without noise correction...\n', datestr(now), mfilename);
-Sobs = zeros( length(ubvals), numel(DWI_vol_averaged(:,:,:,1)) );
-for b = 1:length(ubvals)
-    vol_b = DWI_vol_averaged(:,:,:,b);
-    Sobs(b,:) = vol_b(:)';
-end
-temp_data = struct('Sobs', Sobs, 'bvals', ubvals', 'tol', 0);
-
-nonneg_flag = 0;
-[~, ~, C_mat_legacy] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
-nonneg_flag = 1;
-[~, ~, C_mat] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
-
-C_vol_legacy = zeros(size(DWI_vol_averaged,1), size(DWI_vol_averaged,2), size(DWI_vol_averaged,3), size(C_mat,1));
-C_vol = zeros(size(DWI_vol_averaged,1), size(DWI_vol_averaged,2), size(DWI_vol_averaged,3), size(C_mat,1));
-for c = 1:size(C_mat, 1)
-    C_vol_legacy(:,:,:,c) = reshape( C_mat_legacy(c,:), size(C_vol_legacy,1), size(C_vol_legacy,2), size(C_vol_legacy,3) );
-    C_vol(:,:,:,c) = reshape( C_mat(c,:), size(C_vol,1), size(C_vol,2), size(C_vol,3) );
-end
-fprintf('%s -- %s.m:    Saving RSI signal-contribution (C) maps...\n', datestr(now), mfilename);
-QD_save_mgh( C_vol, fullfile(output_path,'RSI_C_vol_noNC.mgz'), M );
-QD_save_mgh( C_vol_legacy, fullfile(output_path,'RSI_C_vol_legacy_noNC.mgz'), M );
-
-if exist('DWI_vol_averaged_rev', 'var') && (numel(ubvals_rev)>=2)
-  Sobs = zeros( length(ubvals_rev), numel(DWI_vol_averaged_rev(:,:,:,1)) );
-  for b = 1:length(ubvals_rev)
-    vol_b = DWI_vol_averaged_rev(:,:,:,b);
-    Sobs(b,:) = vol_b(:)';
-  end
-  temp_data = struct('Sobs', Sobs, 'bvals', ubvals_rev', 'tol', 0);
-
-  nonneg_flag = 0;
-  [~, ~, C_mat_legacy] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
-  nonneg_flag = 1;
-  [~, ~, C_mat] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
-
-  C_vol_legacy_rev = zeros(size(DWI_vol_averaged_rev,1), size(DWI_vol_averaged_rev,2), size(DWI_vol_averaged_rev,3), size(C_mat,1));
-  C_vol_rev = zeros(size(DWI_vol_averaged_rev,1), size(DWI_vol_averaged_rev,2), size(DWI_vol_averaged_rev,3), size(C_mat,1));
-  for c = 1:size(C_mat, 1)
-    C_vol_legacy_rev(:,:,:,c) = reshape( C_mat_legacy(c,:), size(C_vol_rev,1), size(C_vol_rev,2), size(C_vol_rev,3) );
-    C_vol_rev(:,:,:,c) = reshape( C_mat(c,:), size(C_vol_rev,1), size(C_vol_rev,2), size(C_vol_rev,3) );
-  end
-  fprintf('%s -- %s.m:    Saving RSI signal-contribution (C) maps...\n', datestr(now), mfilename);
-  QD_save_mgh( C_vol_rev, fullfile(output_path,'REV_RSI_C_vol_noNC.mgz'), M_rev );
-  QD_save_mgh( C_vol_legacy_rev, fullfile(output_path,'REV_RSI_C_vol_legacy_noNC.mgz'), M_rev );
 end
 
 
@@ -892,59 +769,57 @@ if exist('rsidat_rev', 'var') && (numel(ubvals_rev)>=2)
 end
 
 
-% Fit RSI model to noise-corrected data ------------------------------------------------
-if params.CorrectNoise == 1
+% Fit RSI model to DWI data -----------------------------------------------------
+fprintf('%s -- %s.m:    Fitting RSI model to forward DWI data...\n', datestr(now), mfilename);
+Sobs = zeros( length(ubvals), numel(DWI_avg_nc(:,:,:,1)) );
+for b = 1:length(ubvals)
+  vol_b = DWI_avg_nc(:,:,:,b);
+  Sobs(b,:) = vol_b(:)';
+end
+temp_data = struct('Sobs', Sobs, 'bvals', ubvals', 'tol', 0);
+obs_fwd = Sobs;
 
-  fprintf('%s -- %s.m:    Fitting RSI model to noise-corrected data...\n', datestr(now), mfilename);
-  Sobs = zeros( length(ubvals), numel(DWI_avg_nc(:,:,:,1)) );
-  for b = 1:length(ubvals)
-    vol_b = DWI_avg_nc(:,:,:,b);
+nonneg_flag = 1;
+[pred_fwd, ~, C_mat] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
+
+C_vol = zeros(size(DWI_vol_averaged,1), size(DWI_vol_averaged,2), size(DWI_vol_averaged,3), size(C_mat,1));
+for c = 1:size(C_mat, 1)
+  C_vol(:,:,:,c) = reshape( C_mat(c,:), size(C_vol,1), size(C_vol,2), size(C_vol,3) );
+end
+fprintf('%s -- %s.m:    Saving RSI signal-contribution (C) maps...\n', datestr(now), mfilename);
+if params.CorrectNoise == 1
+  fprintf('DWI data was corrected for image noise\n');
+  QD_save_mgh( C_vol, fullfile(output_path,'RSI_C_vol_NC.mgz'), M );
+else 
+  fprintf('WARNING: DWI data was NOT corrected for image noise\n');
+  QD_save_mgh( C_vol, fullfile(output_path,'RSI_C_vol_noNC.mgz'), M );
+end
+
+if exist('DWI_avg_nc_rev', 'var') && (numel(ubvals_rev)>=2)
+  fprintf('%s -- %s.m:    Fitting RSI model to reverse DWI data...\n', datestr(now), mfilename);
+  Sobs = zeros( length(ubvals_rev), numel(DWI_avg_nc_rev(:,:,:,1)) );
+  for b = 1:length(ubvals_rev)
+    vol_b = DWI_avg_nc_rev(:,:,:,b);
     Sobs(b,:) = vol_b(:)';
   end
-  temp_data = struct('Sobs', Sobs, 'bvals', ubvals', 'tol', 0);
-  obs_fwd = Sobs;
+  temp_data = struct('Sobs', Sobs, 'bvals', ubvals_rev', 'tol', 0);
+  obs_rev = Sobs;
 
-  nonneg_flag = 0;
-  [~, ~, C_mat_legacy] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
   nonneg_flag = 1;
-  [pred_fwd, ~, C_mat] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
+  [pred_rev, ~, C_mat] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
 
-  C_vol_legacy = zeros(size(DWI_vol_averaged,1), size(DWI_vol_averaged,2), size(DWI_vol_averaged,3), size(C_mat,1));
-  C_vol = zeros(size(DWI_vol_averaged,1), size(DWI_vol_averaged,2), size(DWI_vol_averaged,3), size(C_mat,1));
+  C_vol_rev = zeros(size(DWI_vol_averaged_rev,1), size(DWI_vol_averaged_rev,2), size(DWI_vol_averaged_rev,3), size(C_mat,1));
   for c = 1:size(C_mat, 1)
-    C_vol_legacy(:,:,:,c) = reshape( C_mat_legacy(c,:), size(C_vol_legacy,1), size(C_vol_legacy,2), size(C_vol_legacy,3) );
-    C_vol(:,:,:,c) = reshape( C_mat(c,:), size(C_vol,1), size(C_vol,2), size(C_vol,3) );
+    C_vol_rev(:,:,:,c) = reshape( C_mat(c,:), size(C_vol_rev,1), size(C_vol_rev,2), size(C_vol_rev,3) );
   end
   fprintf('%s -- %s.m:    Saving RSI signal-contribution (C) maps...\n', datestr(now), mfilename);
-  QD_save_mgh( C_vol, fullfile(output_path,'RSI_C_vol_NC.mgz'), M );
-  QD_save_mgh( C_vol_legacy, fullfile(output_path,'RSI_C_vol_legacy_NC.mgz'), M );
-
-  if exist('DWI_avg_nc_rev', 'var') && (numel(ubvals_rev)>=2)
-    fprintf('%s -- %s.m:    Fitting RSI model to noise-corrected data...\n', datestr(now), mfilename);
-    Sobs = zeros( length(ubvals_rev), numel(DWI_avg_nc_rev(:,:,:,1)) );
-    for b = 1:length(ubvals_rev)
-      vol_b = DWI_avg_nc_rev(:,:,:,b);
-      Sobs(b,:) = vol_b(:)';
-    end
-    temp_data = struct('Sobs', Sobs, 'bvals', ubvals_rev', 'tol', 0);
-    obs_rev = Sobs;
-
-    nonneg_flag = 0;
-    [~, ~, C_mat_legacy] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
-    nonneg_flag = 1;
-    [pred_rev, ~, C_mat] = RK_breastRSI_ga_Spred_amd(params.ModelADCs, temp_data, nonneg_flag);
-
-    C_vol_legacy_rev = zeros(size(DWI_vol_averaged_rev,1), size(DWI_vol_averaged_rev,2), size(DWI_vol_averaged_rev,3), size(C_mat,1));
-    C_vol_rev = zeros(size(DWI_vol_averaged_rev,1), size(DWI_vol_averaged_rev,2), size(DWI_vol_averaged_rev,3), size(C_mat,1));
-    for c = 1:size(C_mat, 1)
-      C_vol_legacy_rev(:,:,:,c) = reshape( C_mat_legacy(c,:), size(C_vol_rev,1), size(C_vol_rev,2), size(C_vol_rev,3) );
-      C_vol_rev(:,:,:,c) = reshape( C_mat(c,:), size(C_vol_rev,1), size(C_vol_rev,2), size(C_vol_rev,3) );
-    end
-    fprintf('%s -- %s.m:    Saving RSI signal-contribution (C) maps...\n', datestr(now), mfilename);
+  if params.CorrectNoise == 1
+    fprintf('DWI data was corrected for image noise\n');
     QD_save_mgh( C_vol_rev, fullfile(output_path,'REV_RSI_C_vol_NC.mgz'), M_rev );
-    QD_save_mgh( C_vol_legacy_rev, fullfile(output_path,'REV_RSI_C_vol_legacy_NC.mgz'), M_rev );
+  else
+    fprintf('WARNING: DWI data was NOT corrected for image noise\n');
+    QD_save_mgh( C_vol_rev, fullfile(output_path,'REV_RSI_C_vol_noNC.mgz'), M_rev );
   end
-
 end
 
 
@@ -967,14 +842,14 @@ end
 
 
 % Compute mb0 value ------------------------------------------------
-if exist('contour_dwi_space', 'var')
+if exist('contour_prostate_dwi_space', 'var')
 
-  k = median( vol_b0(logical(contour_dwi_space.imgs)) );
+  k = median( vol_b0(logical(contour_prostate_dwi_space.imgs)) );
   save( fullfile(output_path, 'mb0_scalar.mat'), 'k' );
   mb0 = k;
 
   if exist('vol_b0_rev', 'var')
-     k = median( vol_b0_rev(logical(contour_dwi_space.imgs)) );
+     k = median( vol_b0_rev(logical(contour_prostate_dwi_space.imgs)) );
      save( fullfile(output_path, 'REV_mb0_scalar.mat'), 'k' );
      mb0_rev = k;
   end
@@ -1046,9 +921,9 @@ end
 
 
 % Identify prostate lesions ------------------------------------------------
-if exist('contour_dwi_space', 'var')
+if exist('contour_prostate_dwi_space', 'var')
 
-  [vol_lesions, vec_rsirs_max] = lesion_seg_prostate(ctx_RSIrs_avg, contour_dwi_space);
+  [vol_lesions, vec_rsirs_max] = lesion_seg_prostate(ctx_RSIrs_avg, contour_prostate_dwi_space);
   if ~isempty(vol_lesions)
     ctx_lesions = mgh2ctx(vol_lesions, M);
     QD_ctx_save_mgh(ctx_lesions, fullfile(output_path,'lesion_contours_DWI_space.mgz'));
@@ -1113,8 +988,8 @@ end
 
 %% ========================== Anders' QC metrics ========================== %%
 % Check predicted vs. observed framewise dMRI forward and reverse => model fit and uncorrected motion / eddy currents
-if exist('contour_dwi_space', 'var')
-  vol_dist = bwdist(contour_dwi_space.imgs>0.5);
+if exist('contour_prostate_dwi_space', 'var')
+  vol_dist = bwdist(contour_prostate_dwi_space.imgs>0.5);
   vol_mask = vol_dist<5;
   ivec_mask = find(vol_mask); % Need version that considers anisotropic voxel size
   for i = 1:size(obs_fwd,1)
@@ -1131,7 +1006,7 @@ else
 end
 
 % Check dMRI forward and reverse => distortion correction accuracy (should also compute the predicted Jacobian, and adjust intensities?)
-if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && flag_compute_avgs && exist('contour_dwi_space', 'var')
+if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && flag_compute_avgs && exist('contour_prostate_dwi_space', 'var')
   for fi = 1:size(tmp_vol_fwd,4)
     vol_fwd = tmp_vol_fwd(:,:,:,fi);
     vol_rev = tmp_vol_rev(:,:,:,fi);
@@ -1142,9 +1017,9 @@ else
 end
 
 % Check T2 vs dMRI b=0, compile joint probability map (in vicinity of prostate) => motion between scans
-if exist('contour_dwi_space', 'var')
-  volT2_dwi_ctx = vol_resample(volT2,contour_dwi_space,eye(4));
-  k = median(volT2_dwi_ctx.imgs(logical(contour_dwi_space.imgs)));
+if exist('contour_prostate_dwi_space', 'var')
+  volT2_dwi_ctx = vol_resample(volT2,contour_prostate_dwi_space,eye(4));
+  k = median(volT2_dwi_ctx.imgs(logical(contour_prostate_dwi_space.imgs)));
   volT2_dwi = volT2_dwi_ctx.imgs/k;
   volb0_dwi = mean_DWI_nc(:,:,:,1)/mb0;
   hv_t2 = linspace(0,10,100);
@@ -1234,7 +1109,7 @@ if T2_flag ~= 0 && params.SelectDICOMS.T2
   dcm_hdr_struct.SeriesDescription = T2_dcm_label;
   dcm_hdr_struct.SeriesNumber = 6969;
   outpath_T2 = fullfile(dcm_write_dir, T2_dcm_label);
-  dicomwrite_cmig(volT2, outpath_T2, dcm_hdr_struct)
+  dicomwrite_cmig(volT2, outpath_T2, dcm_hdr_struct);
 end
 
 
@@ -1406,9 +1281,9 @@ end
 
 
 % RSI Visual Report
-if params.SelectDICOMS.RSIrsReportOverlay && T2_flag && exist('contour', 'var')
+if params.SelectDICOMS.RSIrsReportOverlay && T2_flag && exist('contour_prostate', 'var')
 
-   ctx_report = create_visual_report(volT2, contour, ctx_RSIrs_avg_T2_space, ctx_lesions_T2_space, prostate_detector_output, has_implant);
+   ctx_report = create_visual_report(volT2, contour_prostate, ctx_RSIrs_avg_T2_space, ctx_lesions_T2_space, prostate_detector_output, has_implant);
 
    fprintf('%s -- %s.m:    Writing RSI Visual Report ---------------------------------------------------\n', datestr(now), mfilename);
    label = 'RSI_Visual_Report';
@@ -1429,28 +1304,47 @@ if params.SelectDICOMS.RSIrsReportOverlay && T2_flag && exist('contour', 'var')
 end
 
 
-% Prostate mask RT
-if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_RT
-   fprintf('%s -- %s.m:    Writing prostate mask RTstruct DICOM ---------------------------------------------------\n', datestr(now), mfilename);
-   segSTRUCT.number = 1; 
-   segSTRUCT.name = 'Prostate_Autoseg'; 
+% RT DICOM contours
+struct_ind = 1;
+if ~isempty(contour_prostate) && params.SelectDICOMS.ProstateAutoSeg_RT
+  segSTRUCT(struct_ind).number = struct_ind; 
+  segSTRUCT(struct_ind).name = 'Prostate_Autoseg'; 
+  segSTRUCT(struct_ind).seg = contour_prostate.imgs; 
+  struct_ind = struct_ind + 1;
+end
+if ~isempty(contour_urethra) && params.SelectDICOMS.UrethraAutoSeg_RT
+  segSTRUCT(struct_ind).number = struct_ind;
+  segSTRUCT(struct_ind).name = 'Urethra_Autoseg';
+  segSTRUCT(struct_ind).seg = contour_urethra.imgs;
+  struct_ind = struct_ind + 1;
+end
+if ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
+  for i = 1:size(vol_lesions,4)
+    segSTRUCT(struct_ind).number = struct_ind;
+    segSTRUCT(struct_ind).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
+    segSTRUCT(struct_ind).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
+    struct_ind = struct_ind + 1;
+  end
+end
 
-   segSTRUCT.seg = contour.imgs; 
+if exist(fullfile(dcm_write_dir, 'RSI_anatomic_T2W'), 'dir')
+  path_ref = fullfile(dcm_write_dir, 'RSI_anatomic_T2W');
+elseif exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
+  path_ref = fullfile(dcm_write_dir, 'RSIrs_Experimental');
+elseif exist(fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1'), 'dir')
+  path_ref = fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1');
+elseif exist(fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0'), 'dir')
+  path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
+end
 
-   if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
-     path_ref = fullfile(dcm_write_dir, 'RSIrs_Experimental');
-   elseif exist(fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1'), 'dir')
-     path_ref = fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1');
-   elseif exist(fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0'), 'dir')
-     path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
-   end
-   RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'Prostate_Mask_RTst_DWI'), 'Prostate_Mask_AutoSeg', 998); 
-
+if exist('segSTRUCT', 'var')
+  fprintf('%s -- %s.m:    Writing RTstruct DICOMs ---------------------------------------------------\n', datestr(now), mfilename);
+  RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'RT_DICOM'), 'Prostate_contours', 998); 
 end
 
 
 % Prostate mask SEG
-if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
+if exist('contour_prostate_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
    fprintf('%s -- %s.m:    Writing prostate mask SEG DICOM ---------------------------------------------------\n', datestr(now), mfilename);
 
    if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
@@ -1461,7 +1355,7 @@ if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
      path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
    end
 
-   seg_fields.data = contour;
+   seg_fields.data = contour_prostate;
    seg_fields.source_images = path_ref;
 
    seg_fields.algorithm.name = 'Cortechs AI Segmentation';
@@ -1482,50 +1376,6 @@ if exist('contour_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
 
    write_dicom_seg(seg_fields, fullfile(dcm_write_dir, 'Prostate_Mask_SEG_DWI'), params.PythonVEnv);
 
-end
-
-
-% Urethra mask RT                                      
-if exist('contour_urethra', 'var') && params.SelectDICOMS.UrethraAutoSeg_RT
-   fprintf('%s -- %s.m:    Writing urethra mask RTstruct DICOM ---------------------------------------------------\n', datestr(now), mfilename);
-   segSTRUCT.number = 1;
-   segSTRUCT.name = 'Urethra_Autoseg';
-
-   segSTRUCT.seg = contour_urethra.imgs;
-
-   if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
-     path_ref = fullfile(dcm_write_dir, 'RSIrs_Experimental');
-   elseif exist(fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1'), 'dir')
-     path_ref = fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1');
-   elseif exist(fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0'), 'dir')
-     path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
-   end
-   RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'Urethra_Mask_RTst_DWI'), 'Urethra_Mask_AutoSeg', 999);
-
-end
-
-
-% Lesion masks RT
-if exist('vol_lesions', 'var')
-  if ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
-    fprintf('%s -- %s.m:    Writing lesion mask RTstruct DICOM ---------------------------------------------------\n', datestr(now), mfilename);
-
-    for i = 1:size(vol_lesions,4)
-      segSTRUCT(i).number = i;
-      segSTRUCT(i).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
-      segSTRUCT(i).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
-    end
-
-    if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')
-      path_ref = fullfile(dcm_write_dir, 'RSIrs_Experimental');
-    elseif exist(fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1'), 'dir')
-      path_ref = fullfile(dcm_write_dir, 'RSI_C_maps', 'RSI_C1');
-    elseif exist(fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0'), 'dir')
-      path_ref = fullfile(dcm_write_dir, 'RSI_DWI_averages', 'b-value_0');
-    end
-    RK_write_segSTRUCT(segSTRUCT, path_ref, fullfile(dcm_write_dir, 'Lesion_Mask_RTst_DWI'), 'Lesion_Mask_AutoSeg', 1066); 
-    
-  end
 end
 
 
@@ -1574,11 +1424,7 @@ end
 end
 
 
-%% ========================== Finish ===================== %%
-
-% Return LD_PRELOAD to its original value
-setenv('LD_PRELOAD', orig_LD_PRELOAD);
-
 fprintf('%s -- %s.m:    Finished!\n\n\n',datestr(now),mfilename);
+
 
 end
