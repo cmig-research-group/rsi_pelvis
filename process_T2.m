@@ -46,7 +46,7 @@ QD_ctx_save_mgh( ctx_T2,  fullfile(path_output, 'T2_corrected_GUW.mgz') );
 
 
 % Check for hip implant -------------------------------------------------
-implant_detector_output = detect_hip_implant(path_output, params.ProstateSegContainer);
+implant_detector_output = detect_hip_implant( fullfile(path_output, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
 if implant_detector_output
   disp('WARNING: Patient may have hip implant');
 end
