@@ -257,13 +257,13 @@ switch manufacturer
     integrated_rev_flag = 0;
     integrated_rev_flag_rev = 0;
 
-    [rsidat, M, qmat, bvals, dcminfo] = QD_Read_DICOM_Diffusion_Directory_Siemens(RSI_path);
+    [rsidat, M, qmat, bvals, dcminfo] = ReadDicomDiffusionDataSiemens(RSI_path);
     deratefac = sqrt(bvals/max(bvals));
     qmat = qmat.*repmat(colvec(deratefac), [1 3]);
     [gwinfo_rsi, ~] = mmil_get_gradwarpinfo(dcminfo);
 
     if ~isempty(RSI_path_rev)
-      [rsidat_rev, M_rev, qmat_rev, bvals_rev, dcminfo_rev] = QD_Read_DICOM_Diffusion_Directory_Siemens(RSI_path_rev);
+      [rsidat_rev, M_rev, qmat_rev, bvals_rev, dcminfo_rev] = ReadDicomDiffusionDataSiemens(RSI_path_rev);
       if max(bvals_rev) > 0
 	deratefac = sqrt(bvals_rev/max(bvals_rev));
 	qmat_rev = qmat_rev.*repmat(colvec(deratefac), [1 3]);
@@ -1318,12 +1318,14 @@ if ~isempty(contour_urethra) && params.SelectDICOMS.UrethraAutoSeg_RT
   segSTRUCT(struct_ind).seg = contour_urethra.imgs;
   struct_ind = struct_ind + 1;
 end
-if ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
-  for i = 1:size(vol_lesions,4)
-    segSTRUCT(struct_ind).number = struct_ind;
-    segSTRUCT(struct_ind).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
-    segSTRUCT(struct_ind).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
-    struct_ind = struct_ind + 1;
+if exist('vol_lesions', 'var')
+  if ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
+    for i = 1:size(vol_lesions,4)
+      segSTRUCT(struct_ind).number = struct_ind;
+      segSTRUCT(struct_ind).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
+      segSTRUCT(struct_ind).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
+      struct_ind = struct_ind + 1;
+    end
   end
 end
 
