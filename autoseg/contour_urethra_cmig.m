@@ -10,7 +10,7 @@ ctx_t2 = QD_ctx_load_mgh(path_to_axT2_mgz);
 ctx_save_nifti(ctx_t2, fname_nifti)
 
 if strcmpi(container, 'docker')
-     cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=/data_in --mount type=bind,src=%s,dst=/data_out --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output);
+     cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=/data_in --mount type=bind,src=%s,dst=/data_out --entrypoint=/app/miniconda3/bin/conda ghcr.io/cmig-research-group/autoseg_prostate run -n nnUNet /bin/bash -c /app/run_seg_urethra.sh', path_input, path_output);
 
 elseif strcmpi(container, 'singularity')
   path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';

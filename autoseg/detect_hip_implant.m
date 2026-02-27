@@ -10,7 +10,7 @@ setenv('LD_PRELOAD', '');
 container_path_in = sprintf('%s/%s%s', filepath, name, ext);
 
 if strcmpi(container, 'docker')
-  cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=%s --entrypoint=/app/miniconda3/bin/conda localhost/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', filepath, filepath, container_path_in);
+  cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=%s --entrypoint=/app/miniconda3/bin/conda ghcr.io/cmig-research-group/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_hip_implant_detector.py %s', filepath, filepath, container_path_in);
 
 elseif strcmpi(container, 'singularity')
   path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
