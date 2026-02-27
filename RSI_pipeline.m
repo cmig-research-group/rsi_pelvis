@@ -1,10 +1,5 @@
 function series_output_list = RSI_pipeline(input_dir, output_dir, params)
 
-if ~exist(input_dir, 'dir')
-   fprintf('Input directory does not exist: %s\n', input_dir);
-   return
-end
-
 switch class(params)
   case 'struct' % Already in MATLAB 
   case {'char', 'string'}
@@ -19,16 +14,24 @@ switch class(params)
     error('Unable to parse parameter file');
 end
 
+if ~exist(input_dir, 'dir')
+   fprintf('Input directory does not exist: %s\n', input_dir);
+   return
+end
+
 if strcmp(input_dir(end), '/')
    input_dir = input_dir(1:end-1);
 end
 
 indx = regexp(input_dir, '\/');
 bottom_dir = input_dir(indx(end)+1:end);
-match_date = ~isempty(regexp(bottom_dir, '\d{8}$'));
-match_date2 = ~isempty(regexp(bottom_dir, '\d{8}_Study*'));
+contents_bottom_dir = dir(input_dir);
+contents_bottom_dir = {contents_bottom_dir.name};
 
-if match_date || match_date2
+% Check if contents of input_dir are series folders, which means input_dir is a date subfolder, not a top-level patient folder 
+match_series = any(~cellfun(@isempty, regexp(contents_bottom_dir, '^Series_')));
+
+if match_series
   patient_name = input_dir(indx(end-1)+1:indx(end)-1);
   pat_dir.name = bottom_dir;
   pat_dir.folder = input_dir(indx(1):indx(end)-1);
