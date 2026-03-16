@@ -8,6 +8,10 @@ params.ModelADCs = [1.0528e-04 0.0018 0.0036 0.1220];
 % Explicitly declare tensor file (if not declared in DICOM header)
 % params.TensorFile = 'tensor97.dat';
 
+% Explicitly define some protocol settings (if not declared in DICOM header) 
+% params.ForceFOCUS = 0;
+% params.ForcePEPolar = 0;
+
 % B0 distortion correction 
 params.B0DISCO = 1;
   % RPG options (if using RPG)

@@ -144,7 +144,7 @@ switch manufacturer
       isFOCUS = 1;
     end
 
-    if isfield(params, 'ForceFOCUS') == 1
+    if isfield(params, 'ForceFOCUS')
       if params.ForceFOCUS == 1
 	isFOCUS = 1;
       elseif params.ForceFOCUS == 0
@@ -203,7 +203,6 @@ switch manufacturer
       numdirs = dcminfo.Private_0019_10e0;
       qmat = ReadTensorFile(numdirs,numt2s,tensorfile);
       bvals = bmax*sum(qmat.^2,2);
-      
       bvals(bvals<400) = round(bvals(bvals<400));
       bvals(bvals>400&bvals<1000) = round(bvals(bvals>400&bvals<1000), -1);
       bvals(bvals>=1000) = round(bvals(bvals>=1000), -2);
@@ -219,7 +218,6 @@ switch manufacturer
 	else
           bvals_rev = bmax_rev*sum(qmat_rev.^2,2);
 	end
-        
 	bvals_rev(bvals_rev<400) = round(bvals_rev(bvals_rev<400));
 	bvals_rev(bvals_rev>400&bvals_rev<1000) = round(bvals_rev(bvals_rev>400&bvals_rev<1000), -1);
 	bvals_rev(bvals_rev>=1000) = round(bvals_rev(bvals_rev>=1000), -2);
@@ -235,6 +233,9 @@ switch manufacturer
 	integrated_rev_flag = 1;
       end
     end
+    if isfield(params, 'ForcePEPolar') && (params.ForcePEPolar==1)
+      integrated_rev_flag = 1;
+    end
 
     if ~isempty(RSI_path_rev)
       integrated_rev_flag_rev = 0;
@@ -243,6 +244,9 @@ switch manufacturer
 	if ~isempty( strfind(pulse_seq_name_rev, 'pepolar') )
 	  integrated_rev_flag_rev = 1;
 	end
+      end
+      if isfield(params, 'ForcePEPolar') && (params.ForcePEPolar==1)
+	integrated_rev_flag_rev = 1;
       end
     end
     
@@ -456,7 +460,7 @@ nFrames = length(bvals);
 
 fprintf('\n\n');
 fprintf('Protocol Parameters:\n');
-fprintf('\t Scanner Model: %s - %s\n',manufacturer,model_name);
+fprintf('\t Scanner Model: %s - %s\n', dcminfo.Manufacturer, model_name);
 fprintf('\t EchoTime: %.1f ms\n',TE);
 fprintf('\t RepetitionTime: %.1f ms\n',TR);
 fprintf('\t Number of frames: %d \n',nFrames);
@@ -1306,26 +1310,24 @@ end
 
 % RT DICOM contours
 struct_ind = 1;
-if ~isempty(contour_prostate) && params.SelectDICOMS.ProstateAutoSeg_RT
+if exist('contour_prostate', 'var') && ~isempty(contour_prostate) && params.SelectDICOMS.ProstateAutoSeg_RT
   segSTRUCT(struct_ind).number = struct_ind; 
   segSTRUCT(struct_ind).name = 'Prostate_Autoseg'; 
   segSTRUCT(struct_ind).seg = contour_prostate.imgs; 
   struct_ind = struct_ind + 1;
 end
-if ~isempty(contour_urethra) && params.SelectDICOMS.UrethraAutoSeg_RT
+if exist('contour_urethra', 'var') && ~isempty(contour_urethra) && params.SelectDICOMS.UrethraAutoSeg_RT
   segSTRUCT(struct_ind).number = struct_ind;
   segSTRUCT(struct_ind).name = 'Urethra_Autoseg';
   segSTRUCT(struct_ind).seg = contour_urethra.imgs;
   struct_ind = struct_ind + 1;
 end
-if exist('vol_lesions', 'var')
-  if ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
-    for i = 1:size(vol_lesions,4)
-      segSTRUCT(struct_ind).number = struct_ind;
-      segSTRUCT(struct_ind).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
-      segSTRUCT(struct_ind).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
-      struct_ind = struct_ind + 1;
-    end
+if exist('vol_lesions', 'var') && ~isempty(vol_lesions) && params.SelectDICOMS.LesionAutoSeg_RT
+  for i = 1:size(vol_lesions,4)
+    segSTRUCT(struct_ind).number = struct_ind;
+    segSTRUCT(struct_ind).name = sprintf('Lesion%s_Autoseg_maxRSIrs_%s', num2str(i), num2str(round(vec_rsirs_max(i))));
+    segSTRUCT(struct_ind).seg = ctx_lesions_T2_space.imgs(:,:,:,i); 
+    struct_ind = struct_ind + 1;
   end
 end
 
