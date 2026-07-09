@@ -84,7 +84,10 @@ for v = 1:length(pat_dir)
       disp(['Processing ' paths.RSI{i}]);
       try
 
-	path_selected_T2 = select_T2w_series(paths.T2_ax); 
+	fprintf('Identifying corresponding T2W series\n');
+	path_selected_T2 = select_T2w_series(paths.T2_ax, paths.RSI{i}); 
+	fprintf('Selected T2W series: %s\n', path_selected_T2);
+
 	processRSI( paths.RSI{i}, paths.RSI_rev{i}, path_selected_T2, paths.DCE, series_output_dir, params );
 
       catch ME

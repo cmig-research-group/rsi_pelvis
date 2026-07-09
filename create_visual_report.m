@@ -1,5 +1,10 @@
 function ctx_report = create_visual_report(ctx_T2, ctx_mask_prostate, ctx_RSIrs, ctx_lesions, prostate_detector_output, has_implant)
 
+% NOTE: Hip implant and prostate detectors are currently disabled due to unreliable performance
+%       has_implant is hard-coded to 0 (assumes no hip implant)
+%       prostate_detector_output is hard-coded to 1 (assumes prostate is present)
+
+
 % Create overlay on which to print the report ----------------------------------------
 if ~isempty(ctx_RSIrs)
 
@@ -43,7 +48,8 @@ box_opacity = 0.9;
 font_size = 11;
 
 if prostate_detector_output
-  text_prostate = 'Detected';
+  % text_prostate = 'Detected';
+  text_prostate = 'Assumed';
 else
   text_prostate = 'Not detected';
   box_color = 'y';
@@ -53,7 +59,8 @@ if has_implant
   text_implant = 'Detected';
   box_color = 'y';
 else
-  text_implant = 'None detected';
+  % text_implant = 'None detected';
+  text_implant = 'Assumed none';
 end
 
 header = sprintf('%s\nAI feature-detection results:\n    Prostate: %s\n    Hip implant: %s\n', report_title, text_prostate, text_implant);

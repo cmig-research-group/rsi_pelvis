@@ -32,13 +32,13 @@ fname_ref = fullfile(ims(3).folder, ims(3).name);
 dcminfo = dicominfo(fname_ref);
 dcminfo = fix_impax_dcm_tags(dcminfo);
 
-manufacturer = dcminfo.Manufacturer;
-if ~isempty(regexpi(manufacturer, 'ge'))
-  manufacturer = 'ge';
-elseif ~isempty(regexpi(manufacturer, 'siemens'))
-  manufacturer = 'siemens';
-elseif ~isempty(regexpi(manufacturer, 'philips'))
-  manufacturer = 'philips';
+manufacturer = find_manufacturer(dcminfo);
+if isempty(manufacturer)
+  fprintf('ERROR: Could not identify manufacturer: %s\n\n', RSI_path);
+  return
+end
+if ~isfield(dcminfo, 'Manufacturer')
+   dcminfo.Manufacturer = upper(manufacturer); % Generate tag for other functions
 end
 
 % Check for enhanced DICOMs
@@ -123,7 +123,7 @@ if ~exist(output_path,'dir')
 end
 
 
-%% ============== load RSI Data ============== %%
+%% ======================================= load RSI Data =========================================== %%
 isARTPro = 0;
 
 switch manufacturer
@@ -171,6 +171,7 @@ switch manufacturer
     end
 
     % load dicom data
+    disp('Loading RSI DICOMs');
     if isempty(which(tensorfile)) || strcmp(tensorfile, 'tensor0.dat')
 
       disp('Assuming GE product DWI or acquisition on DV29+ platform')
@@ -261,6 +262,7 @@ switch manufacturer
     integrated_rev_flag = 0;
     integrated_rev_flag_rev = 0;
 
+    disp('Loading RSI DICOMs');
     [rsidat, M, qmat, bvals, dcminfo] = ReadDicomDiffusionDataSiemens(RSI_path);
     deratefac = sqrt(bvals/max(bvals));
     qmat = qmat.*repmat(colvec(deratefac), [1 3]);
@@ -286,6 +288,7 @@ switch manufacturer
     integrated_rev_flag = 0;
     integrated_rev_flag_rev = 0;
 
+    disp('Loading RSI DICOMs');
     [rsidat, M, qmat, bvals, gwinfo_rsi, dcminfo, inds_synth] = ReadDicomDiffusionDataPhilips(RSI_path);
     % Remove synthesized volumes
     fprintf('Excising synthesized volume(s)\n');
@@ -305,6 +308,75 @@ switch manufacturer
 
   otherwise
     error('Unsupported scanner manufacturer')
+
+end
+
+
+% Check if forward and reverse volumes are of compatible size and scan coverage ------------------------------------------------------------
+% Resample reverse volume to match forward volume if necessary
+[rows, cols, slices, ~] = size(rsidat);
+if ~isempty(AcquisitionMatrix)
+  matrix = double(AcquisitionMatrix);
+  matrix = matrix(matrix~=0);
+else
+  matrix = [rows cols]';
+end
+FOV_row = rows*PixelSpacing(2);
+real_vxl_size_row = FOV_row./matrix(1);
+
+if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
+
+  if enhanced_flag
+    if isfield(dcminfo_rev, 'MRAcquisitionFrequencyEncodingSteps') && isfield(dcminfo_rev, 'MRAcquisitionPhaseEncodingStepsInPlane')
+      AcquisitionMatrix_rev = [double(dcminfo_rev.MRAcquisitionFrequencyEncodingSteps) double(dcminfo_rev.MRAcquisitionPhaseEncodingStepsInPlane)]';
+    elseif isfield(dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1, 'Private_2005_140f')
+      AcquisitionMatrix_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
+    else
+      AcquisitionMatrix_rev = [];
+    end
+    PixelSpacing_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
+  else
+    if isfield(dcminfo_rev, 'AcquisitionMatrix')
+      AcquisitionMatrix_rev = dcminfo_rev.AcquisitionMatrix;
+    else
+      AcquisitionMatrix_rev = [];
+    end
+    PixelSpacing_rev = dcminfo_rev.PixelSpacing;
+  end
+
+  [rows_rev, cols_rev, slices_rev, ~] = size(rsidat_rev);
+  if ~isempty(AcquisitionMatrix_rev)
+    matrix_rev = double(AcquisitionMatrix_rev);
+    matrix_rev = matrix_rev(matrix_rev~=0);
+  else
+    matrix_rev = [rows_rev cols_rev]';
+  end
+  FOV_row_rev = rows_rev*PixelSpacing_rev(2);
+  real_vxl_size_row_rev = FOV_row_rev./matrix_rev(1);
+
+end
+
+if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
+
+   flag_diff_size = ~isequal([rows cols slices], [rows_rev cols_rev slices_rev]);
+   if flag_diff_size
+      fprintf('WARNING: Forward and reverse volumes are different sizes!\n');
+   end
+
+   diff = abs(M(:,4) - M_rev(:,4));
+   flag_diff_coverage = any(diff > real_vxl_size_row);
+   if flag_diff_coverage
+      fprintf('WARNING: Scan coverage of forward and reverse volumes are different!\n');
+   end
+
+   if flag_diff_size | flag_diff_coverage
+     fprintf('Resampling reverse volume to match the forward volume\n');
+     ctx_rsidat = mgh2ctx(rsidat, M);
+     ctx_rsidat_rev = mgh2ctx(rsidat_rev, M_rev);
+     ctx_rsidat_rev = vol_resample(ctx_rsidat_rev, ctx_rsidat, eye(4), 0);
+     rsidat_rev = ctx_rsidat_rev.imgs;
+     M_rev = M;
+   end
 
 end
 
@@ -469,74 +541,12 @@ fprintf('\n\n');
 
 if exist('bvals_rev', 'var')
    fprintf('Protocol Parameters (reverse PE polarity):\n');
-   fprintf('\t Scanner Model: %s - %s\n',manufacturer,model_name);
+   fprintf('\t Scanner Model: %s - %s\n', dcminfo.Manufacturer, model_name);
    fprintf('\t EchoTime: %.1f ms\n',TE);
    fprintf('\t RepetitionTime: %.1f ms\n',TR);
    fprintf('\t Number of frames: %d \n', length(bvals_rev));
    fprintf('\t b-values: %.1f mms-2\n', ubvals_rev);
    fprintf('\n\n');
-end
-
-
-% Check if forward and reverse volumes are compatible
-[rows, cols, slices, ~] = size(rsidat);
-if ~isempty(AcquisitionMatrix)
-  matrix = double(AcquisitionMatrix);
-  matrix = matrix(matrix~=0);
-else
-  matrix = [rows cols]';
-end
-FOV_row = rows*PixelSpacing(2);
-real_vxl_size_row = FOV_row./matrix(1);
-
-if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
-
-  if enhanced_flag
-    if isfield(dcminfo_rev, 'MRAcquisitionFrequencyEncodingSteps') && isfield(dcminfo_rev, 'MRAcquisitionPhaseEncodingStepsInPlane')
-      AcquisitionMatrix_rev = [double(dcminfo_rev.MRAcquisitionFrequencyEncodingSteps) double(dcminfo_rev.MRAcquisitionPhaseEncodingStepsInPlane)]';
-    elseif isfield(dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1, 'Private_2005_140f')
-      AcquisitionMatrix_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.Private_2005_140f.Item_1.AcquisitionMatrix;
-    else
-      AcquisitionMatrix_rev = [];
-    end
-    PixelSpacing_rev = dcminfo_rev.PerFrameFunctionalGroupsSequence.Item_1.PixelMeasuresSequence.Item_1.PixelSpacing;
-  else
-    if isfield(dcminfo_rev, 'AcquisitionMatrix')
-      AcquisitionMatrix_rev = dcminfo_rev.AcquisitionMatrix;
-    else
-      AcquisitionMatrix_rev = [];
-    end
-    PixelSpacing_rev = dcminfo_rev.PixelSpacing;
-  end
-
-  [rows_rev, cols_rev, slices_rev, ~] = size(rsidat_rev);
-  if ~isempty(AcquisitionMatrix_rev)
-    matrix_rev = double(AcquisitionMatrix_rev);
-    matrix_rev = matrix_rev(matrix_rev~=0);
-  else
-    matrix_rev = [rows_rev cols_rev]';
-  end
-  FOV_row_rev = rows_rev*PixelSpacing_rev(2);
-  real_vxl_size_row_rev = FOV_row_rev./matrix_rev(1);
-
-end
-
-flag_compute_avgs = 1;
-if exist('rsidat_rev', 'var') && (integrated_rev_flag == 0)
-
-   if ~isequal(size(rsidat_averaged(:,:,:,1)), size(rsidat_averaged_rev(:,:,:,1)))
-      fprintf('WARNING: Forward and reverse volumes are different sizes!\n');
-      params.B0DISCO = 0;
-      flag_compute_avgs = 0;
-   end
-
-   diff = abs(M(:,4) - M_rev(:,4));
-   if any(diff > real_vxl_size_row)
-      fprintf('WARNING: Scan coverage of forward and reverse volumes are different!\n');
-      params.B0DISCO = 0;
-      flag_compute_avgs = 0;
-   end
-
 end
 
 
@@ -550,43 +560,61 @@ if T2_flag ~= 0
 
   % Check if prostate has already been contoured for another RSI series
   already_contoured = 0;
-  path_date = fullfile(output_path, '../');
-  cmd = sprintf('find %s -name "prostate_contour_T2_space.mgz"', path_date);
-  [~, cmdout] = system(cmd);
-  if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying prostate contour from another series...\n',datestr(now),mfilename);
-    cmdout = split(cmdout);
-    match_contour = find(~cellfun(@isempty, cmdout));
-    path_contour = cmdout{match_contour};
-    copyfile(path_contour, output_path);
-    contour_prostate = QD_ctx_load_mgh(fullfile(output_path, 'prostate_contour_T2_space.mgz'));
-    contour_prostate_dwi_space = vol_resample(contour_prostate, b0_vol_fwd, eye(4));
-    QD_ctx_save_mgh( contour_prostate_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+  path_contour = fullfile(output_path, 'prostate_contour_T2_space.mgz');
+  if exist(path_contour, 'file')
+     already_contoured = 1;
+  else
+    path_date = fullfile(output_path, '../');
+    cmd = sprintf('find %s -name "prostate_contour_T2_space.mgz"', path_date);
+    [~, cmdout] = system(cmd);
+    if ~isempty(cmdout)
+      fprintf('%s -- %s.m:    Copying prostate contour from another series...\n',datestr(now),mfilename);
+      cmdout = split(cmdout);
+      match_contour = find(~cellfun(@isempty, cmdout));
+      match_contour = match_contour(1);
+      path_contour_other = cmdout{match_contour};
+      copyfile(path_contour_other, output_path);
+      already_contoured = 1;
+    end
+  end
+  if already_contoured
+    contour_prostate = QD_ctx_load_mgh(path_contour);
+    prostate_detector_output = 1;
     params_T2.ProstateSeg = 0;
-    already_contoured = 1;
   end
 
   % Check if urethra has already been contoured for another RSI series
-  cmd = sprintf('find %s -name "urethra_contour_T2_space.mgz"', path_date);
-  [~, cmdout] = system(cmd);
-  if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying urethra contour from another series...\n',datestr(now),mfilename);
-    cmdout = split(cmdout);
-    match_contour = find(~cellfun(@isempty, cmdout));
-    path_contour = cmdout{match_contour};
-    copyfile(path_contour, output_path);
-    contour_urethra = QD_ctx_load_mgh(fullfile(output_path, 'urethra_contour_T2_space.mgz'));
+  already_contoured_urethra = 0;
+  path_contour_urethra = fullfile(output_path, 'urethra_contour_T2_space.mgz');
+  if exist(path_contour_urethra, 'file')
+    already_contoured_urethra = 1;
+  else
+    path_date = fullfile(output_path, '../');
+    cmd = sprintf('find %s -name "urethra_contour_T2_space.mgz"', path_date);
+    [~, cmdout] = system(cmd);
+    if ~isempty(cmdout)
+      fprintf('%s -- %s.m:    Copying urethra contour from another series...\n',datestr(now),mfilename);
+      cmdout = split(cmdout);
+      match_contour = find(~cellfun(@isempty, cmdout));
+      match_contour = match_contour(1);
+      path_contour_other = cmdout{match_contour};
+      copyfile(path_contour_other, output_path);
+      already_contoured_urethra = 1;
+    end
+  end
+  if already_contoured_urethra
+    contour_urethra = QD_ctx_load_mgh(path_contour_urethra);
     params_T2.UrethraSeg = 0;
   end
 
   params_T2.WriteDICOMS = 0;
-  [volT2, dcminfo_T2, has_implant, prostate_detector_output, tmp_contour_prostate, tmp_contour_urethra] = process_T2(T2_path, output_path, params_T2);
+  [volT2, dcminfo_T2, has_implant, tmp_prostate_detector_output, tmp_contour_prostate, tmp_contour_urethra] = process_T2(T2_path, output_path, params_T2);
   if ~already_contoured
+     prostate_detector_output = tmp_prostate_detector_output;
      contour_prostate = tmp_contour_prostate;
-     prostate_detector_output = 1;
      contour_urethra = tmp_contour_urethra;
-     clear tmp_contour_prostate tmp_contour_urethra;
   end
+  clear tmp_prostate_detector_output tmp_contour_prostate tmp_contour_urethra;
 
   if ~isempty(contour_prostate)
     fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
@@ -827,25 +855,13 @@ if exist('DWI_avg_nc_rev', 'var') && (numel(ubvals_rev)>=2)
 end
 
 
-% Get median signal within the bladder at b=0 ----------------------
+% Measure some values on b=0 ---------------------------------------
 vol_b0 = DWI_avg_nc(:,:,:,1);
-C3_vol = C_vol(:,:,:,3);
-urine_mask = get_bladder_mask(C3_vol, 0.75);
-k = median( vol_b0(urine_mask) );
-QD_save_mgh( urine_mask, fullfile(output_path,'urine_mask.mgz'), M );
-save( fullfile(output_path, 'urine_norm_scalar.mat'), 'k' );
-
 if exist('DWI_avg_nc_rev', 'var')
   vol_b0_rev = DWI_avg_nc_rev(:,:,:,1);
-  C3_vol_rev = C_vol_rev(:,:,:,3);
-  urine_mask_rev = get_bladder_mask(C3_vol_rev, 0.75);
-  k = median( vol_b0_rev(urine_mask_rev) );
-  QD_save_mgh( urine_mask_rev, fullfile(output_path,'REV_urine_mask.mgz'), M_rev );
-  save( fullfile(output_path, 'REV_urine_norm_scalar.mat'), 'k' );
 end
 
-
-% Compute mb0 value ------------------------------------------------
+% Compute mb0 value
 if exist('contour_prostate_dwi_space', 'var')
 
   k = median( vol_b0(logical(contour_prostate_dwi_space.imgs)) );
@@ -877,7 +893,7 @@ end
 
 % Average forward and reverse volumes -------------------------------
 % DWI
-if exist('DWI_vol_averaged_rev', 'var') && (numel(ubvals)==numel(ubvals_rev)) && flag_compute_avgs
+if exist('DWI_vol_averaged_rev', 'var') && (numel(ubvals)==numel(ubvals_rev))
   mean_DWI_vol_averaged = (DWI_vol_averaged + DWI_vol_averaged_rev) ./ 2;
 else
   mean_DWI_vol_averaged = DWI_vol_averaged;
@@ -886,14 +902,14 @@ QD_save_mgh( mean_DWI_vol_averaged, fullfile(output_path,'meanFwdRev_DWI_vol_pre
 mean_DWI_ctx_avg = mgh2ctx(mean_DWI_vol_averaged, M);
 
 % DWI NC (only used for Anders' QC, for now)
-if exist('DWI_avg_nc_rev', 'var') && (numel(ubvals)==numel(ubvals_rev)) && flag_compute_avgs
+if exist('DWI_avg_nc_rev', 'var') && (numel(ubvals)==numel(ubvals_rev))
   mean_DWI_nc = (DWI_avg_nc + DWI_avg_nc_rev) ./ 2;
 else
   mean_DWI_nc = DWI_avg_nc;
 end
 
 % ADC
-if exist('conv_ADC_vol_rev', 'var') && flag_compute_avgs
+if exist('conv_ADC_vol_rev', 'var')
   conv_ADC_vol_avg = (conv_ADC_vol + conv_ADC_vol_rev) ./ 2;
 else
   conv_ADC_vol_avg = conv_ADC_vol;
@@ -901,7 +917,7 @@ end
 QD_save_mgh( conv_ADC_vol_avg, fullfile(output_path,'meanFwdRev_conventional_ADC_map.mgz'), M );
 
 % C maps
-if exist('C_vol_rev', 'var') && (numel(ubvals)==numel(ubvals_rev)) && flag_compute_avgs
+if exist('C_vol_rev', 'var') && (numel(ubvals)==numel(ubvals_rev))
   C_vol_avg = (C_vol + C_vol_rev) ./ 2;
 else
   C_vol_avg = C_vol;
@@ -910,7 +926,7 @@ QD_save_mgh( C_vol_avg, fullfile(output_path,'meanFwdRev_RSI_C_vol_NC.mgz'), M )
 
 % RSIrs
 if exist('RSIrs_fwd', 'var')
-  if exist('RSIrs_rev', 'var') && (numel(ubvals)==numel(ubvals_rev)) && flag_compute_avgs
+  if exist('RSIrs_rev', 'var') && (numel(ubvals)==numel(ubvals_rev))
     RSIrs_avg = (RSIrs_fwd + RSIrs_rev) ./ 2;
   else
     RSIrs_avg = RSIrs_fwd;
@@ -1010,7 +1026,7 @@ else
 end
 
 % Check dMRI forward and reverse => distortion correction accuracy (should also compute the predicted Jacobian, and adjust intensities?)
-if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && flag_compute_avgs && exist('contour_prostate_dwi_space', 'var')
+if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && exist('contour_prostate_dwi_space', 'var')
   for fi = 1:size(tmp_vol_fwd,4)
     vol_fwd = tmp_vol_fwd(:,:,:,fi);
     vol_rev = tmp_vol_rev(:,:,:,fi);
@@ -1042,21 +1058,29 @@ if ~isempty(DCE_path{1})
 
   % Check if DCE data has already been loaded for another RSI series
   dce_exists = 0;
-  path_date = fullfile(output_path, '../');
-  cmd = sprintf('find %s -name "DCE.mgz"', path_date);
-  [~, cmdout] = system(cmd);
-  if ~isempty(cmdout)
-    fprintf('%s -- %s.m:    Copying DCE data from another RSI series...\n',datestr(now),mfilename);
-    cmdout = split(cmdout);
-    match_dce = find(~cellfun(@isempty, cmdout));
-    path_dce = cmdout{match_dce};
-    copyfile(path_dce, output_path);
-    [fpath_dce, ~, ~] = fileparts(path_dce);
-    copyfile(fullfile(fpath_dce, 't.mat'), output_path);
-    ctx_dce = QD_ctx_load_mgh(fullfile(output_path, 'DCE.mgz'));
+  path_dce = fullfile(output_path, 'DCE.mgz');
+  if exist(path_dce, 'file')
+    dce_exists = 1;
+  else
+    path_date = fullfile(output_path, '../');
+    cmd = sprintf('find %s -name "DCE.mgz"', path_date);
+    [~, cmdout] = system(cmd);
+    if ~isempty(cmdout)
+      fprintf('%s -- %s.m:    Copying DCE data from another RSI series...\n',datestr(now),mfilename);
+      cmdout = split(cmdout);
+      match_dce = find(~cellfun(@isempty, cmdout));
+      match_dce = match_dce(1);
+      path_dce_other = cmdout{match_dce};
+      copyfile(path_dce_other, output_path);
+      [fpath_dce_other, ~, ~] = fileparts(path_dce_other);
+      copyfile(fullfile(fpath_dce_other, 't.mat'), output_path);
+      dce_exists = 1;
+    end
+  end
+  if dce_exists
+    ctx_dce = QD_ctx_load_mgh(path_dce);
     t = load(fullfile(output_path, 't.mat'));
     t = t.t;
-    dce_exists = 1;
   end
 
   if dce_exists == 0
@@ -1171,15 +1195,15 @@ if params.SelectDICOMS.DWI
     if exist('volT2', 'var')
       ctx2write = vol_resample(ctx2write, volT2, eye(4));
       dcm_hdr_struct = dcminfo_T2;
-      dcm_hdr_struct.SeriesDescription = dwi_label;
-      dcm_hdr_struct.SeriesNumber = DWI_dcm_seriesnum;
-      dicomwrite_cmig(ctx2write, dwi_dcm_dir, dcm_hdr_struct);
     else 
       dcm_hdr_struct = dcminfo;
-      dcm_hdr_struct.SeriesDescription = dwi_label;
-      dcm_hdr_struct.SeriesNumber = DWI_dcm_seriesnum;
-      dicomwrite_cmig(ctx2write, dwi_dcm_dir, dcm_hdr_struct);
     end
+    dcm_hdr_struct.SeriesDescription = dwi_label;
+    dcm_hdr_struct.SeriesNumber = DWI_dcm_seriesnum;
+    dcm_hdr_struct.EchoTime = TE;
+    dcm_hdr_struct.RepetitionTime = TR;
+    dcm_hdr_struct.DiffusionBValue = ubvals(b);
+    dicomwrite_cmig(ctx2write, dwi_dcm_dir, dcm_hdr_struct);
 
     DWI_dcm_seriesnum = DWI_dcm_seriesnum + 1;
 
@@ -1204,23 +1228,18 @@ if params.SelectDICOMS.ADC
   if exist('volT2', 'var')
     ctx2write = vol_resample(ctx2write, volT2, eye(4));
     dcm_hdr_struct = dcminfo_T2;
-    dcm_hdr_struct.SeriesDescription = ADC_dcm_label;
-    dcm_hdr_struct.SeriesNumber = ADC_dcm_seriesnum;
-    dcm_hdr_struct.RescaleSlope = RescaleSlope;
-    dcm_hdr_struct.RescaleIntercept = RescaleIntercept;
-    dcm_hdr_struct.WindowWidth = WindowWidth;
-    dcm_hdr_struct.WindowCenter = WindowCenter;
-    dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, ADC_dcm_label), dcm_hdr_struct);
   else 
     dcm_hdr_struct = dcminfo;
-    dcm_hdr_struct.SeriesDescription = ADC_dcm_label;
-    dcm_hdr_struct.SeriesNumber = ADC_dcm_seriesnum;
-    dcm_hdr_struct.RescaleSlope = RescaleSlope;
-    dcm_hdr_struct.RescaleIntercept = RescaleIntercept;
-    dcm_hdr_struct.WindowWidth = WindowWidth;
-    dcm_hdr_struct.WindowCenter = WindowCenter;
-    dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, ADC_dcm_label), dcm_hdr_struct);
   end
+  dcm_hdr_struct.SeriesDescription = ADC_dcm_label;
+  dcm_hdr_struct.SeriesNumber = ADC_dcm_seriesnum;
+  dcm_hdr_struct.EchoTime = TE;
+  dcm_hdr_struct.RepetitionTime = TR;
+  dcm_hdr_struct.RescaleSlope = RescaleSlope;
+  dcm_hdr_struct.RescaleIntercept = RescaleIntercept;
+  dcm_hdr_struct.WindowWidth = WindowWidth;
+  dcm_hdr_struct.WindowCenter = WindowCenter;
+  dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, ADC_dcm_label), dcm_hdr_struct);
 
 end
 
@@ -1249,15 +1268,14 @@ if params.SelectDICOMS.RSICmaps
     if exist('volT2', 'var')
       ctx2write = vol_resample(ctx2write, volT2, eye(4));
       dcm_hdr_struct = dcminfo_T2;
-      dcm_hdr_struct.SeriesDescription = rsi_label;
-      dcm_hdr_struct.SeriesNumber = RSI_C_seriesnum;
-      dicomwrite_cmig(ctx2write, rsi_dcm_dir, dcm_hdr_struct);
     else
       dcm_hdr_struct = dcminfo;
-      dcm_hdr_struct.SeriesDescription = rsi_label;
-      dcm_hdr_struct.SeriesNumber = RSI_C_seriesnum;
-      dicomwrite_cmig(ctx2write, rsi_dcm_dir, dcm_hdr_struct);
     end
+    dcm_hdr_struct.SeriesDescription = rsi_label;
+    dcm_hdr_struct.SeriesNumber = RSI_C_seriesnum;
+    dcm_hdr_struct.EchoTime = TE;
+    dcm_hdr_struct.RepetitionTime = TR;
+    dicomwrite_cmig(ctx2write, rsi_dcm_dir, dcm_hdr_struct);
 
     RSI_C_seriesnum = RSI_C_seriesnum + 1;
 
@@ -1278,6 +1296,8 @@ if exist('mb0', 'var') && params.SelectDICOMS.RSIrs
    dcm_hdr_struct = dcminfo_T2;
    dcm_hdr_struct.SeriesDescription = label;
    dcm_hdr_struct.SeriesNumber = seriesnum;
+   dcm_hdr_struct.EchoTime = TE;
+   dcm_hdr_struct.RepetitionTime = TR;
    dcm_hdr_struct.WindowWidth = 100;
    dcm_hdr_struct.WindowCenter = 130;
    dicomwrite_cmig(ctx2write, fullfile(dcm_write_dir, label), dcm_hdr_struct);

@@ -1,5 +1,10 @@
 function [ctx_T2, dcminfo_T2, implant_detector_output, prostate_detector_output, contour_prostate, contour_urethra] = process_T2(path_dcm_dir, path_output, params)
 
+% NOTE: Hip implant and prostate detectors are currently disabled due to unreliable performance
+%       implant_detector_output is hard-coded to 0 (assumes no hip implant)
+%       prostate_detector_output is hard-coded to 1 (assumes prostate is present)
+ 
+
 % Autoseg options
 if ~isfield(params, 'ProstateSeg')
    params.ProstateSeg = 1;
@@ -46,7 +51,9 @@ QD_ctx_save_mgh( ctx_T2,  fullfile(path_output, 'T2_corrected_GUW.mgz') );
 
 
 % Check for hip implant -------------------------------------------------
-implant_detector_output = detect_hip_implant( fullfile(path_output, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+% Disable for now, until we have a more reliable solution
+% implant_detector_output = detect_hip_implant( fullfile(path_output, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+implant_detector_output = 0;
 if implant_detector_output
   disp('WARNING: Patient may have hip implant');
 end

@@ -1,5 +1,9 @@
 function [prostate_mask, prostate_detector_output] = contour_prostate_cmig(path_to_axT2_mgz, container)
 
+% NOTE: Prostate detector is currently disabled due to unreliable performance
+%       prostate_detector_output is hard-coded to 1 (assumes prostate is present)
+
+
 % Unset LD_PRELOAD environment variable for system calls to singularity
 % Otherwise need to parse glibc warnings
 orig_LD_PRELOAD = getenv('LD_PRELOAD');
@@ -11,31 +15,33 @@ path_output = filepath;
 mkdir(path_input);
 
 
-% First, check to see if there is a prostate in the volume
-container_path_in = sprintf('%s/%s%s', path_output, name, ext);
-
-if strcmpi(container, 'docker')
-     cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=%s --entrypoint=/app/miniconda3/bin/conda ghcr.io/cmig-research-group/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, path_output, container_path_in);
-
-elseif strcmpi(container, 'singularity')
-  path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
-  path_tmp = fullfile(path_output, 'tmp');
-  mkdir(path_tmp);
-  cmd = sprintf('singularity exec -B %s:%s -B %s:/app/tmp %s python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, path_output, path_tmp, path_sif, container_path_in);
-end
-
-disp(['Command: ' cmd]);
-[status, cmdout] = system(cmd);
-cmdout = split(cmdout);
-match_notempty = find(~cellfun(@isempty, cmdout));
-has_prostate = str2double(cmdout{match_notempty});
-
-if ~has_prostate
-  disp('WARNING: Patient may not have prostate');
-  prostate_detector_output = 0;
-else
-  prostate_detector_output = 1;
-end
+% Disabled for now
+% % First, check to see if there is a prostate in the volume
+% container_path_in = sprintf('%s/%s%s', path_output, name, ext);
+% 
+% if strcmpi(container, 'docker')
+%      cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=%s --entrypoint=/app/miniconda3/bin/conda ghcr.io/cmig-research-group/autoseg_prostate run -n nnUNet python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, path_output, container_path_in);
+% 
+% elseif strcmpi(container, 'singularity')
+%   path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+%   path_tmp = fullfile(path_output, 'tmp');
+%   mkdir(path_tmp);
+%   cmd = sprintf('singularity exec -B %s:%s -B %s:/app/tmp %s python3 -Wignore /app/3D_inference_prostate_detector.py %s', path_output, path_output, path_tmp, path_sif, container_path_in);
+% end
+% 
+% disp(['Command: ' cmd]);
+% [status, cmdout] = system(cmd);
+% cmdout = split(cmdout);
+% match_notempty = find(~cellfun(@isempty, cmdout));
+% has_prostate = str2double(cmdout{match_notempty});
+% 
+% if ~has_prostate
+%   disp('WARNING: Patient may not have prostate');
+%   prostate_detector_output = 0;
+% else
+%   prostate_detector_output = 1;
+% end
+prostate_detector_output = 1;
 
 
 % Segment prostate from volume

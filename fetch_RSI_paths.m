@@ -23,21 +23,24 @@ global_exclude = {'.', '..', '.DS_Store'};
 
 % RSI general
 patterns_RSI = {'RSI'};
-patterns_exclude_RSI = {'trace', 'adc', 'color', 'fa', 'tensor', '[\s_]+T2[\s_]+', 'NOT.FOR.CLINICAL.USE', 'Apparent.Diffusion.Coefficient', 'Restricted.Signal.Map'};
+patterns_exclude_RSI = {'trace', 'adc', 'color', 'fa', 'tensor', '[\s_]+T2[\s_]+', '^T2[\s_]+', '[\s_]+T2$', 'NOT.FOR.CLINICAL.USE', 'Apparent.Diffusion.Coefficient', 'Restricted.Signal.Map'};
 
 % RSI GE 
-seqID_RSI_GE = {'epi2_pepolarFOCUSFLEX', 'epi2_pepolarFLEX', 'epi2_ART', 'epi2_revART', 'epi2alt', 'epi2altoff'};
+patterns_seqID_RSI_GE = {'epi2_pepolarFOCUSFLEX', 'epi2_pepolarFLEX', 'epi2_ART', 'epi2_revART', 'epi2alt', 'epi2altoff'};
 
 % RSI Siemens
 patterns_seqID_RSI_Siemens = {'ep_b', 'ez_b', 'WI_b'};
 
 % RSI Philips
-patterns_seqID_RSI_philips = {'DwiSE'};
+patterns_seqID_RSI_Philips = {'DwiSE'};
+
+% RSI all vendors
+patterns_seqID_RSI = [patterns_seqID_RSI_GE patterns_seqID_RSI_Siemens patterns_seqID_RSI_Philips];
 
 % Axial T2 for RSI overlay
 patterns_T2_ax_plane = {'ax', 'tra'};
 patterns_T2_ax_contrast = {'T2', 'FSE'};
-patterns_exclude_T2_ax = {'water', 'fat', 'flex', 'sag', 'cor', 'reformat', 'cube', 'T1', 'bifurcation', 'prop', '3d', 'space'};
+patterns_exclude_T2_ax = {'water', 'fat', 'flex', 'sag', 'cor', 'reformat', 'cube', 'T1', 'bifurcation', 'prop', '3d', 'space', 'Whole.Pelvis'};
 
 % Conventional DWI
 seqID_DWI_GE = 'epi2';
@@ -91,69 +94,25 @@ for i = 1:length(acqs)
     
     SeriesDescription = info.SeriesDescription;
     
-    % Sort out vendor-specific stuff -----------------------------------------------
-    manufacturer = info.Manufacturer;
-    if ~isempty(regexpi(manufacturer, 'ge'))
-      manufacturer = 'ge';
-    elseif ~isempty(regexpi(manufacturer, 'siemens'))
-      manufacturer = 'siemens';
-    elseif ~isempty(regexpi(manufacturer, 'philips'))
-      manufacturer = 'philips';
-    end
-
     seq_name = '';
-    switch manufacturer
-      case 'ge'
-	if isfield(info, 'Private_0019_109c')
-	  seq_name = info.Private_0019_109c;
-	end
-
-      case 'siemens'
-	if isfield(info, 'SequenceName')
-	  seq_name = info.SequenceName;
-	end
-
-      case 'philips'
-	if isfield(info, 'PulseSequenceName')
-	  seq_name = info.PulseSequenceName;
-	elseif isfield(info, 'MRSeriesScanningTechniqueDesc')
-	  seq_name = info.MRSeriesScanningTechniqueDesc;
-	end
-
-      otherwise
-	seq_name = '';
+    if isfield(info, 'PulseSequenceName')
+      seq_name = info.PulseSequenceName;
+    elseif isfield(info, 'SequenceName')
+      seq_name = info.SequenceName;
+    elseif isfield(info, 'MRSeriesScanningTechniqueDesc')
+      seq_name = info.MRSeriesScanningTechniqueDesc;
+    elseif isfield(info, 'Private_0019_109c')
+      seq_name = info.Private_0019_109c;
     end
 
     % Check for RSI data -----------------------------------------------------
-    if strcmp(manufacturer, 'ge')
-      match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, seqID_RSI_GE)));
-      match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
-      match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_RSI)));
-      if (match_RSI_seq || match_RSI_name) && ~match_exclude
-	paths.RSI{RSI_path_num} = acq_path;
-	series_description_list{RSI_path_num} = SeriesDescription; % Save for later filtering of reverse acquisitions
-	RSI_path_num = RSI_path_num + 1;
-      end
-    end
-    if strcmp(manufacturer, 'siemens')
-      match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, patterns_seqID_RSI_Siemens)));
-      match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
-      match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_RSI)));
-      if (match_RSI_seq || match_RSI_name) && ~match_exclude
-	paths.RSI{RSI_path_num} = acq_path;
-	series_description_list{RSI_path_num} = SeriesDescription; % Save for later filtering of reverse acquisitions
-	RSI_path_num = RSI_path_num + 1;
-      end
-    end
-    if strcmp(manufacturer, 'philips')
-      match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, patterns_seqID_RSI_philips)));
-      match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
-      match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_RSI)));
-      if (match_RSI_seq || match_RSI_name) && ~match_exclude
-	paths.RSI{RSI_path_num} = acq_path;
-	series_description_list{RSI_path_num} = SeriesDescription; % Save for later filtering of reverse acquisitions
-	RSI_path_num = RSI_path_num + 1;
-      end
+    match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, patterns_seqID_RSI)));
+    match_RSI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_RSI)));
+    match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_RSI)));
+    if (match_RSI_seq || match_RSI_name) && ~match_exclude
+      paths.RSI{RSI_path_num} = acq_path;
+      series_description_list{RSI_path_num} = SeriesDescription; % Save for later filtering of reverse acquisitions
+      RSI_path_num = RSI_path_num + 1;
     end
 
     % Check for anatomical T2 DICOMs
@@ -168,7 +127,7 @@ for i = 1:length(acqs)
 
     % Check for conventional DWI
     match_DWI_seq = strcmp(seq_name, seqID_DWI_GE);
-    match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, seqID_RSI_GE)));
+    match_RSI_seq = any(~cellfun(@isempty, regexpi(seq_name, patterns_seqID_RSI_GE)));
     match_DWI_name = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_DWI)));
     match_exclude = any(~cellfun(@isempty, regexpi(SeriesDescription, patterns_exclude_DWI)));
     if (match_DWI_seq || match_DWI_name) && ~match_RSI_seq && ~match_exclude
