@@ -27,6 +27,7 @@ ADCs = B\Y;
 
 ADC_volume = reshape(ADCs, rows, cols, slices);
 ADC_volume(isnan(ADC_volume)) = 0;
+ADC_volume(ADC_volume<0) = 0;
 ADC_volume(mask) = 0;
 
 end
