@@ -29,7 +29,8 @@ params.CorrectNoise = 1;
   % Supports deep-learning AI segmentation models from two vendors: CMIG (default) and Cortechs.ai
   % Both models can be run using Docker, Podman (with alias docker=podman), or Singularity (default for CMIG users)
     % If on the CMIG network, set the container to 'Singularity'
-    % If you have and want to use the Docker/Podman container, set the container to 'Docker' 
+    % If you have and want to use the Docker/Podman container, set the container to 'Docker'
+      % If using Singularity, set the PathSingularitySif field (under the "Host machine configuration" section below) to the path of the Singularity container .sif file 
 params.ProstateSeg = 1;
 params.ProstateSegVendor = 'CMIG'; % Use 'Cortechs' for the model from Cortechs.ai (if you have the Docker image)
 params.ProstateSegContainer = 'Singularity';
@@ -39,8 +40,13 @@ params.ProstateSegContainer = 'Singularity';
   % Can be run using Docker, Podman (with alias docker=podman), or Singularity (default for CMIG users)
     % If on the CMIG network, set the container to 'Singularity'
     % If you have and want to use the Docker/Podman container, set the container to 'Docker' 
+      % If using Singularity, set the PathSingularitySif field (under the "Host machine configuration" section below) to the path of the Singularity container .sif file 
 params.UrethraSeg = 1;
 params.UrethraSegContainer = 'Singularity';
+
+% Force program to run segmentation steps even if segmentation outputs already exist
+% Default behavior is to load prior segmentation results instead of re-computing
+params.ForceSeg = 0;
 
 % DICOM outputs
 params.WriteDICOMS = 1;
@@ -67,5 +73,8 @@ params.WriteOptionalSeries = 1;
 
 
 %% Host machine configuration -------------------------------------------------
+% Path to Singularity container used for automated segmentations 
+params.PathSingularitySif = '/space/bil-nas01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+
 % Path to python virtual environment (only necessary to generate DICOM SEG contours)
 params.PythonVEnv = '/home/ccconlin/Working/pirads_app/venv_pirads';

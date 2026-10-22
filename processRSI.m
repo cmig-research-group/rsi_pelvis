@@ -583,6 +583,30 @@ if T2_flag ~= 0
     params_T2.ProstateSeg = 0;
   end
 
+  % Check if PZ has already been contoured for another RSI series
+  already_contoured_pz = 0;
+  path_contour_pz = fullfile(output_path, 'pz_contour_T2_space.mgz');
+  if exist(path_contour_pz, 'file')
+    already_contoured_pz = 1;
+  else
+    path_date = fullfile(output_path, '../');
+    cmd = sprintf('find %s -name "pz_contour_T2_space.mgz"', path_date);
+    [~, cmdout] = system(cmd);
+    if ~isempty(cmdout)
+      fprintf('%s -- %s.m:    Copying PZ contour from another series...\n',datestr(now),mfilename);
+      cmdout = split(cmdout);
+      match_contour = find(~cellfun(@isempty, cmdout));
+      match_contour = match_contour(1);
+      path_contour_other = cmdout{match_contour};
+      copyfile(path_contour_other, output_path);
+      already_contoured_pz = 1;
+    end
+  end
+  if already_contoured_pz
+    contour_pz = QD_ctx_load_mgh(path_contour_pz);
+    params_T2.ProstateSeg = 0;
+  end
+
   % Check if urethra has already been contoured for another RSI series
   already_contoured_urethra = 0;
   path_contour_urethra = fullfile(output_path, 'urethra_contour_T2_space.mgz');
@@ -607,19 +631,37 @@ if T2_flag ~= 0
     params_T2.UrethraSeg = 0;
   end
 
+  if params.ForceSeg
+    already_contoured = 0;
+    already_contoured_pz = 0;
+    already_contoured_urethra = 0;
+    params_T2.ProstateSeg = 1;
+    params_T2.UrethraSeg = 1;
+  end
+
   params_T2.WriteDICOMS = 0;
-  [volT2, dcminfo_T2, has_implant, tmp_prostate_detector_output, tmp_contour_prostate, tmp_contour_urethra] = process_T2(T2_path, output_path, params_T2);
+  [volT2, dcminfo_T2, has_implant, tmp_prostate_detector_output, tmp_contour_prostate, tmp_contour_pz, tmp_contour_urethra] = process_T2(T2_path, output_path, params_T2);
   if ~already_contoured
      prostate_detector_output = tmp_prostate_detector_output;
      contour_prostate = tmp_contour_prostate;
+  end
+  if ~already_contoured_pz
+     contour_pz = tmp_contour_pz;
+  end
+  if ~already_contoured_urethra
      contour_urethra = tmp_contour_urethra;
   end
-  clear tmp_prostate_detector_output tmp_contour_prostate tmp_contour_urethra;
+  clear tmp_prostate_detector_output tmp_contour_prostate tmp_contour_pz tmp_contour_urethra;
 
   if ~isempty(contour_prostate)
     fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
     contour_prostate_dwi_space = vol_resample(contour_prostate, b0_vol_fwd, eye(4));
     QD_ctx_save_mgh( contour_prostate_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+  end
+  if ~isempty(contour_pz)
+    fprintf('%s -- %s.m:    Resampling PZ contour into DWI space...\n',datestr(now),mfilename);
+    contour_pz_dwi_space = vol_resample(contour_pz, b0_vol_fwd, eye(4));
+    QD_ctx_save_mgh( contour_pz_dwi_space, fullfile(output_path, 'pz_contour_DWI_space.mgz') );
   end
 
   [rows_T2, cols_T2, slices_T2, ~] = size(volT2.imgs);
@@ -1334,6 +1376,12 @@ if exist('contour_prostate', 'var') && ~isempty(contour_prostate) && params.Sele
   segSTRUCT(struct_ind).number = struct_ind; 
   segSTRUCT(struct_ind).name = 'Prostate_Autoseg'; 
   segSTRUCT(struct_ind).seg = contour_prostate.imgs; 
+  struct_ind = struct_ind + 1;
+end
+if exist('contour_pz', 'var') && ~isempty(contour_pz) && params.SelectDICOMS.ProstateAutoSeg_RT
+  segSTRUCT(struct_ind).number = struct_ind;
+  segSTRUCT(struct_ind).name = 'PZ_Autoseg';
+  segSTRUCT(struct_ind).seg = contour_pz.imgs;
   struct_ind = struct_ind + 1;
 end
 if exist('contour_urethra', 'var') && ~isempty(contour_urethra) && params.SelectDICOMS.UrethraAutoSeg_RT

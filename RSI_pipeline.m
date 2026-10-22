@@ -1,5 +1,10 @@
 function series_output_list = RSI_pipeline(input_dir, output_dir, params)
 
+% Set default values for parameters
+defaults.PathSingularitySif = '/space/bil-nas01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+defaults.ForceSeg = 0;
+
+% Load user-defined parameters
 switch class(params)
   case 'struct' % Already in MATLAB 
   case {'char', 'string'}
@@ -13,6 +18,15 @@ switch class(params)
   otherwise
     error('Unable to parse parameter file');
 end
+
+% Insert default value for missing parameters
+fields_default = fieldnames(defaults);
+for i = 1:length(fields_default)
+  if ~isfield(params, fields_default{i})
+    params.(fields_default{i}) = defaults.(fields_default{i});
+  end
+end
+
 
 if ~exist(input_dir, 'dir')
    fprintf('Input directory does not exist: %s\n', input_dir);

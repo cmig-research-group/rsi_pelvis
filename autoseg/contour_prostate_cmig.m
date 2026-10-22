@@ -1,4 +1,4 @@
-function [prostate_mask, prostate_detector_output] = contour_prostate_cmig(path_to_axT2_mgz, container)
+function [prostate_mask, prostate_detector_output] = contour_prostate_cmig(path_to_axT2_mgz, params)
 
 % NOTE: Prostate detector is currently disabled due to unreliable performance
 %       prostate_detector_output is hard-coded to 1 (assumes prostate is present)
@@ -14,6 +14,7 @@ path_input = fullfile(filepath, 'seg');
 path_output = filepath;
 mkdir(path_input);
 
+container = params.ProstateSegContainer;
 
 % Disabled for now
 % % First, check to see if there is a prostate in the volume
@@ -54,7 +55,7 @@ if strcmpi(container, 'docker')
   cmd = sprintf('sudo docker run --ipc="host" --mount type=bind,src=%s,dst=/data_in --mount type=bind,src=%s,dst=/data_out ghcr.io/cmig-research-group/autoseg_prostate', path_input, path_output);
 
 elseif strcmpi(container, 'singularity')
-  path_sif = '/space/bil-syn01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+  path_sif = params.PathSingularitySif;
   path_tmp = fullfile(filepath, 'tmp');
   mkdir(path_tmp);
   cmd = sprintf('singularity run -B %s:/data_in -B %s:/data_out_predict -B %s:/data_out %s', path_input, path_tmp, path_output, path_sif); 

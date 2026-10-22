@@ -1,4 +1,4 @@
-function [ctx_T2, dcminfo_T2, implant_detector_output, prostate_detector_output, contour_prostate, contour_urethra] = process_T2(path_dcm_dir, path_output, params)
+function [ctx_T2, dcminfo_T2, implant_detector_output, prostate_detector_output, contour_prostate, contour_pz, contour_urethra] = process_T2(path_dcm_dir, path_output, params)
 
 % NOTE: Hip implant and prostate detectors are currently disabled due to unreliable performance
 %       implant_detector_output is hard-coded to 0 (assumes no hip implant)
@@ -62,7 +62,7 @@ end
 % Segment prostate from T2 volume -----------------------------------------
 if params.ProstateSeg
   fprintf('%s -- %s.m:    Segmenting prostate from T2 volume using CMIG software...\n',datestr(now),mfilename);
-  [contour_prostate, prostate_detector_output] = contour_prostate_cmig( fullfile(path_output, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+  [contour_prostate, prostate_detector_output] = contour_prostate_cmig( fullfile(path_output, 'T2_corrected_GUW.mgz'), params );
 
   if ~isempty(contour_prostate)
     cmd = ['mv ' fullfile(path_output,'T2_corrected_GUW_seg.mgz') ' ' fullfile(path_output,'prostate_contour_T2_space.mgz')];
@@ -75,10 +75,25 @@ else
 end
 
 
+% Segment PZ from T2 volume -----------------------------------------
+if params.ProstateSeg
+  fprintf('%s -- %s.m:    Segmenting PZ from T2 volume using CMIG software...\n',datestr(now),mfilename);
+  contour_pz = contour_pz_cmig( fullfile(path_output, 'T2_corrected_GUW.mgz'), params );
+
+  if ~isempty(contour_pz)
+    cmd = ['mv ' fullfile(path_output,'T2_corrected_GUW_seg.mgz') ' ' fullfile(path_output,'pz_contour_T2_space.mgz')];
+    system(cmd);
+  end
+
+else
+  contour_pz = [];
+end
+
+
 % Segment urethra from T2 volume -----------------------------------------
 if params.UrethraSeg
   fprintf('%s -- %s.m:    Segmenting urethra from T2 volume using CMIG software...\n',datestr(now),mfilename);
-  contour_urethra = contour_urethra_cmig( fullfile(path_output, 'T2_corrected_GUW.mgz'), params.ProstateSegContainer );
+  contour_urethra = contour_urethra_cmig( fullfile(path_output, 'T2_corrected_GUW.mgz'), params );
 
   if ~isempty(contour_urethra)
     cmd = ['mv ' fullfile(path_output,'T2_corrected_GUW_seg.mgz') ' ' fullfile(path_output,'urethra_contour_T2_space.mgz')];
