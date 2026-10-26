@@ -3,23 +3,40 @@ function [ctx_T2, dcminfo_T2, implant_detector_output, prostate_detector_output,
 % NOTE: Hip implant and prostate detectors are currently disabled due to unreliable performance
 %       implant_detector_output is hard-coded to 0 (assumes no hip implant)
 %       prostate_detector_output is hard-coded to 1 (assumes prostate is present)
+
+
+% Set default values for parameters
+defaults.ProstateSeg = 1;
+defaults.UrethraSeg = 1;
+defaults.ProstateSegContainer = 'singularity';
+defaults.PathSingularitySif = '/space/bil-nas01/1/cmig_bil/containers/autoseg_prostate/autoseg_prostate.sif';
+defaults.WriteDICOMS = 1;
+
+% Load user-defined parameters
+switch class(params)
+  case 'struct' % Already in MATLAB 
+  case {'char', 'string'}
+    [~, ~, ext] = fileparts(params);
+    if strcmp(ext, '.mat')
+      load(params);
+    else
+      params = eval_file(params);
+      fprintf('\n\n');
+    end
+  otherwise
+    fprintf('WARNING: Unable to parse parameter file, using default options\n');
+    params = struct;
+end
+
+% Insert default value for missing parameters
+fields_default = fieldnames(defaults);
+for i = 1:length(fields_default)
+  if ~isfield(params, fields_default{i})
+    params.(fields_default{i}) = defaults.(fields_default{i});
+  end
+end
+
  
-
-% Autoseg options
-if ~isfield(params, 'ProstateSeg')
-   params.ProstateSeg = 1;
-end
-if ~isfield(params, 'UrethraSeg')
-  params.UrethraSeg = 1;
-end
-if ~isfield(params, 'ProstateSegContainer')
-  params.ProstateSegContainer = 'singularity';
-end
-
-if ~isfield(params, 'WriteDICOMS')
-  params.WriteDICOMS = 1;
-end
-
 if ~exist(path_output, 'dir')
   mkdir(path_output);
 end
@@ -133,6 +150,12 @@ if ~isempty(contour_prostate)
   segSTRUCT(struct_ind).number = struct_ind; 
   segSTRUCT(struct_ind).name = 'Prostate_Autoseg'; 
   segSTRUCT(struct_ind).seg = contour_prostate.imgs; 
+  struct_ind = struct_ind + 1;
+end
+if ~isempty(contour_pz) 
+  segSTRUCT(struct_ind).number = struct_ind; 
+  segSTRUCT(struct_ind).name = 'PZ_Autoseg'; 
+  segSTRUCT(struct_ind).seg = contour_pz.imgs; 
   struct_ind = struct_ind + 1;
 end
 if ~isempty(contour_urethra)
