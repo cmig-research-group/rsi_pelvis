@@ -657,6 +657,8 @@ if T2_flag ~= 0
     fprintf('%s -- %s.m:    Resampling prostate contour into DWI space...\n',datestr(now),mfilename);
     contour_prostate_dwi_space = vol_resample(contour_prostate, b0_vol_fwd, eye(4));
     QD_ctx_save_mgh( contour_prostate_dwi_space, fullfile(output_path, 'prostate_contour_DWI_space.mgz') );
+  else
+    contour_prostate_dwi_space = [];
   end
   if ~isempty(contour_pz)
     fprintf('%s -- %s.m:    Resampling PZ contour into DWI space...\n',datestr(now),mfilename);
@@ -904,7 +906,7 @@ if exist('DWI_avg_nc_rev', 'var')
 end
 
 % Compute mb0 value
-if exist('contour_prostate_dwi_space', 'var')
+if ~isempty(contour_prostate_dwi_space)
 
   k = median( vol_b0(logical(contour_prostate_dwi_space.imgs)) );
   save( fullfile(output_path, 'mb0_scalar.mat'), 'k' );
@@ -983,7 +985,7 @@ end
 
 
 % Identify prostate lesions ------------------------------------------------
-if exist('contour_prostate_dwi_space', 'var')
+if ~isempty(contour_prostate_dwi_space)
 
   [vol_lesions, vec_rsirs_max] = lesion_seg_prostate(ctx_RSIrs_avg, contour_prostate_dwi_space);
   if ~isempty(vol_lesions)
@@ -1050,7 +1052,7 @@ end
 
 %% ========================== Anders' QC metrics ========================== %%
 % Check predicted vs. observed framewise dMRI forward and reverse => model fit and uncorrected motion / eddy currents
-if exist('contour_prostate_dwi_space', 'var')
+if ~isempty(contour_prostate_dwi_space)
   vol_dist = bwdist(contour_prostate_dwi_space.imgs>0.5);
   vol_mask = vol_dist<5;
   ivec_mask = find(vol_mask); % Need version that considers anisotropic voxel size
@@ -1068,7 +1070,7 @@ else
 end
 
 % Check dMRI forward and reverse => distortion correction accuracy (should also compute the predicted Jacobian, and adjust intensities?)
-if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && exist('contour_prostate_dwi_space', 'var')
+if params.B0DISCO && exist('DWI_avg_nc_rev', 'var') && ~isempty(contour_prostate_dwi_space)
   for fi = 1:size(tmp_vol_fwd,4)
     vol_fwd = tmp_vol_fwd(:,:,:,fi);
     vol_rev = tmp_vol_rev(:,:,:,fi);
@@ -1079,7 +1081,7 @@ else
 end
 
 % Check T2 vs dMRI b=0, compile joint probability map (in vicinity of prostate) => motion between scans
-if exist('contour_prostate_dwi_space', 'var')
+if ~isempty(contour_prostate_dwi_space)
   volT2_dwi_ctx = vol_resample(volT2,contour_prostate_dwi_space,eye(4));
   k = median(volT2_dwi_ctx.imgs(logical(contour_prostate_dwi_space.imgs)));
   volT2_dwi = volT2_dwi_ctx.imgs/k;
@@ -1347,7 +1349,7 @@ end
 
 
 % RSI Visual Report
-if params.SelectDICOMS.RSIrsReportOverlay && T2_flag && exist('contour_prostate', 'var')
+if params.SelectDICOMS.RSIrsReportOverlay && T2_flag && ~isempty(contour_prostate)
 
    ctx_report = create_visual_report(volT2, contour_prostate, ctx_RSIrs_avg_T2_space, ctx_lesions_T2_space, prostate_detector_output, has_implant);
 
@@ -1372,7 +1374,7 @@ end
 
 % RT DICOM contours
 struct_ind = 1;
-if exist('contour_prostate', 'var') && ~isempty(contour_prostate) && params.SelectDICOMS.ProstateAutoSeg_RT
+if ~isempty(contour_prostate) && params.SelectDICOMS.ProstateAutoSeg_RT
   segSTRUCT(struct_ind).number = struct_ind; 
   segSTRUCT(struct_ind).name = 'Prostate_Autoseg'; 
   segSTRUCT(struct_ind).seg = contour_prostate.imgs; 
@@ -1416,7 +1418,7 @@ end
 
 
 % Prostate mask SEG
-if exist('contour_prostate_dwi_space', 'var') && params.SelectDICOMS.ProstateAutoSeg_SEG
+if ~isempty(contour_prostate_dwi_space) && params.SelectDICOMS.ProstateAutoSeg_SEG
    fprintf('%s -- %s.m:    Writing prostate mask SEG DICOM ---------------------------------------------------\n', datestr(now), mfilename);
 
    if exist(fullfile(dcm_write_dir, 'RSIrs_Experimental'), 'dir')

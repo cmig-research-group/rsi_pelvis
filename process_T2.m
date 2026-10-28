@@ -13,6 +13,9 @@ defaults.PathSingularitySif = '/space/bil-nas01/1/cmig_bil/containers/autoseg_pr
 defaults.WriteDICOMS = 1;
 
 % Load user-defined parameters
+if ~exist('params', 'var')
+  params = struct;
+end
 switch class(params)
   case 'struct' % Already in MATLAB 
   case {'char', 'string'}
